@@ -103,3 +103,15 @@ expo-env.d.ts
 *.tsbuildinfo
 node-compile-cache/
 .codegraph/
+
+# Rust
+target/
+
+# Vite cache
+.vite/
+
+# Playwright
+.playwright-mcp/
+
+# OpenCode
+.omo/
