@@ -1,4 +1,4 @@
-const BASE = 'http://localhost:7010/api/v1'
+const BASE = '/api/v1'
 
 function token() {
   return localStorage.getItem('admin_token')

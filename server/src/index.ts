@@ -6,6 +6,7 @@ import broadcastsRouter from "./routes/broadcasts.js";
 import workspaceRouter from "./routes/workspace.js";
 import webhookRouter from "./routes/webhook.js";
 import authRouter from "./routes/auth.js";
+import adminSkillsRouter from "./routes/adminSkills.js";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -26,6 +27,7 @@ app.use('/api/v1/chats', chatsRouter);
 app.use('/api/v1/broadcasts', broadcastsRouter);
 app.use('/api/v1', workspaceRouter);
 app.use('/api/v1/auth', authRouter);
+app.use('/api/v1/admin/skills', adminSkillsRouter);
 
 // LINE Webhook
 app.use('/webhook', webhookRouter);

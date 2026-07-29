@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import SoapIcon from '@mui/icons-material/Soap'
 import ChatIcon from '@mui/icons-material/Chat'
 import CelebrationIcon from '@mui/icons-material/Celebration'
@@ -6,6 +6,7 @@ import ImageIcon from '@mui/icons-material/Image'
 import ViewModuleIcon from '@mui/icons-material/ViewModule'
 import ViewListIcon from '@mui/icons-material/ViewList'
 import { FlowEditor, type FlowNode } from '../components/FlowEditor'
+import { get, put } from '../api/client'
 
 const skillData = [
   {
@@ -97,7 +98,7 @@ function loadStoredFlow(title: string): FlowNode[] | null {
   }
 }
 
-function persistFlow(title: string, nodes: FlowNode[]) {
+function persistFlowLocal(title: string, nodes: FlowNode[]) {
   try {
     localStorage.setItem(STORAGE_PREFIX + title, JSON.stringify(nodes))
   } catch {
@@ -105,7 +106,31 @@ function persistFlow(title: string, nodes: FlowNode[]) {
   }
 }
 
-function getInitialFlow(title: string): FlowNode[] {
+function enc(title: string): string {
+  return encodeURIComponent(title)
+}
+
+async function fetchFlow(title: string): Promise<FlowNode[] | null> {
+  try {
+    const res = await get<{ data: FlowNode[] | null }>(`/admin/skills/${enc(title)}/flow`)
+    return Array.isArray(res.data) ? res.data : null
+  } catch {
+    return null
+  }
+}
+
+async function saveFlowRemote(title: string, nodes: FlowNode[]): Promise<boolean> {
+  try {
+    await put(`/admin/skills/${enc(title)}/flow`, nodes)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function getInitialFlow(title: string): Promise<FlowNode[]> {
+  const remote = await fetchFlow(title)
+  if (remote && remote.length > 0) return remote
   const stored = loadStoredFlow(title)
   if (stored && stored.length > 0) return stored
   return flowsByTitle[title] ?? []
@@ -116,24 +141,23 @@ export function Skills() {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('date')
   const [flowSkill, setFlowSkill] = useState<typeof skillData[0] | null>(null)
-  const [, setFlowVersion] = useState(0)
-  const refreshFlows = () => setFlowVersion((v) => v + 1)
+  const [flowNodes, setFlowNodes] = useState<FlowNode[]>([])
+  const [flowLoading, setFlowLoading] = useState(false)
 
-  useEffect(() => {
-    try {
-      if (localStorage.getItem('sam.flow.cleanup.v1')) return
-      const keys: string[] = []
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i)
-        if (k && k.startsWith(STORAGE_PREFIX)) keys.push(k)
-      }
-      keys.forEach((k) => localStorage.removeItem(k))
-      localStorage.setItem('sam.flow.cleanup.v1', '1')
-      if (keys.length > 0) refreshFlows()
-    } catch {
-      return
-    }
-  }, [])
+  async function openSkill(s: typeof skillData[0]) {
+    setFlowSkill(s)
+    setFlowLoading(true)
+    const nodes = await getInitialFlow(s.title)
+    setFlowNodes(nodes)
+    setFlowLoading(false)
+  }
+
+  async function handleSave(nodes: FlowNode[]) {
+    if (!flowSkill) return
+    persistFlowLocal(flowSkill.title, nodes)
+    const ok = await saveFlowRemote(flowSkill.title, nodes)
+    if (!ok) console.warn('Remote save failed; cached locally only')
+  }
 
   const filtered = useMemo(() => {
     const f = skillData.filter(
@@ -248,7 +272,7 @@ export function Skills() {
                 cursor: 'pointer',
                 transition: 'box-shadow 0.2s, transform 0.2s',
               }}
-              onClick={() => setFlowSkill(s)}
+              onClick={() => openSkill(s)}
               onMouseOver={(e) => {
                 e.currentTarget.style.boxShadow = '0 6px 24px rgba(0,0,0,0.08)'
                 e.currentTarget.style.transform = 'translateY(-2px)'
@@ -296,7 +320,7 @@ export function Skills() {
                 cursor: 'pointer',
                 transition: 'background 0.15s',
               }}
-              onClick={() => setFlowSkill(s)}
+              onClick={() => openSkill(s)}
               onMouseOver={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
               onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
             >
@@ -322,14 +346,14 @@ export function Skills() {
         skillTitle={flowSkill?.title || ''}
         skillIcon={flowSkill?.icon || null}
         skillColor={flowSkill?.color || '#3b82f6'}
-        initialNodes={flowSkill ? getInitialFlow(flowSkill.title) : []}
-        onSave={(nodes) => {
-          if (flowSkill) {
-            persistFlow(flowSkill.title, nodes)
-            refreshFlows()
-          }
-        }}
+        initialNodes={flowNodes}
+        onSave={handleSave}
       />
+      {flowLoading && (
+        <div style={{ position: 'fixed', bottom: 20, right: 20, fontSize: 12, color: 'var(--text-secondary)' }}>
+          載入流程中…
+        </div>
+      )}
     </>
   )
 }

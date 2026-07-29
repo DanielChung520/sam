@@ -7,5 +7,11 @@ export default defineConfig({
     port: 7012,
     allowedHosts: ['admla.aiconn.ai', '.aiconn.ai'],
     host: '0.0.0.0',
+    proxy: {
+      '/api': {
+        target: 'http://localhost:9091',
+        changeOrigin: true,
+      },
+    },
   },
 })
