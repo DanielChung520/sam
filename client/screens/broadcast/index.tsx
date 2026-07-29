@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import AccountAvatar from '@/components/shared/AccountAvatar';
 import { USBStatusBadge } from '@/components/shared/USBStatusBadge';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
@@ -209,6 +210,7 @@ export default function BroadcastScreen() {
     <Screen backgroundColor={colors.bg} safeAreaEdges={['left', 'right']}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
+          <AccountAvatar />
           <Text style={styles.headerTitle}>發送</Text>
           <TouchableOpacity style={styles.menuBtn} onPress={() => setShowMenu(!showMenu)}>
             <FontAwesome6 name="ellipsis" size={20} color={colors.text} />

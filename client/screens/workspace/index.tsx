@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Screen } from '@/components/Screen';
+import AccountAvatar from '@/components/shared/AccountAvatar';
 import { USBStatusBadge } from '@/components/shared/USBStatusBadge';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
@@ -193,6 +194,7 @@ export default function WorkspaceScreen() {
   return (
     <Screen backgroundColor={colors.bg} safeAreaEdges={['left', 'right']}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+        <AccountAvatar />
         <Text style={styles.headerTitle}>工作區</Text>
         <USBStatusBadge status="connected" />
       </View>

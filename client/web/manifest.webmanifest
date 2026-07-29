@@ -1,6 +1,6 @@
 {
-  "name": "SAM 銷售助理",
-  "short_name": "SAM",
+  "name": "LINE代理",
+  "short_name": "LINE代理",
   "description": "AI 驅動的 LINE 銷售助理管理",
   "start_url": "/",
   "scope": "/",

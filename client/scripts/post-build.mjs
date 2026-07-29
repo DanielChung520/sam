@@ -11,7 +11,7 @@ const metaTags = `
     <meta name="theme-color" content="#059669" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="SAM" />
+    <meta name="apple-mobile-web-app-title" content="LINE代理" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="format-detection" content="telephone=no" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -26,9 +26,26 @@ if (existsSync(indexPath)) {
     '<meta charset="utf-8" />',
     `<meta charset="utf-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />${metaTags}`
   );
-  html = html.replace('<title>应用</title>', '<title>SAM 銷售助理</title>');
+  html = html.replace('<title>应用</title>', '<title>LINE代理</title>');
+  // Register Service Worker for PWA installability
+  html = html.replace('</body>', `
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js');
+  });
+}
+</script>
+</body>`);
   writeFileSync(indexPath, html);
   console.log('✓ index.html updated with PWA meta tags');
+}
+
+const swSrc = join(CLIENT, 'web', 'sw.js');
+const swDst = join(DIST, 'sw.js');
+if (existsSync(swSrc)) {
+  copyFileSync(swSrc, swDst);
+  console.log('✓ sw.js copied');
 }
 
 const manifestSrc = join(CLIENT, 'web', 'manifest.webmanifest');

@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import AccountAvatar from '@/components/shared/AccountAvatar';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -160,6 +161,7 @@ export default function NewsScreen() {
   return (
     <Screen backgroundColor={colors.bg} safeAreaEdges={['left', 'right']}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <AccountAvatar />
         <Text style={styles.headerTitle}>新聞追蹤</Text>
         <TouchableOpacity style={styles.menuBtn} onPress={() => setShowMenu(!showMenu)}>
           <FontAwesome6 name="ellipsis" size={20} color={colors.text} />

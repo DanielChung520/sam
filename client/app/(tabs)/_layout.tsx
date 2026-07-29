@@ -90,7 +90,8 @@ export default function TabLayout() {
             <View
               style={[
                 styles.iconWrap,
-                focused && { backgroundColor: colors.tabActiveBg, borderRadius: 20, width: 48, height: 48 },
+                styles.iconWrapChat,
+                focused && { backgroundColor: colors.tabActiveBg },
               ]}
             >
               <FontAwesome6
@@ -143,5 +144,10 @@ const styles = StyleSheet.create({
     height: 5,
     borderRadius: 2.5,
     marginTop: 3,
+  },
+  iconWrapChat: {
+    width: 48,
+    height: 48,
+    borderRadius: 20,
   },
 });

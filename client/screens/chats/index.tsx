@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Screen } from '@/components/Screen';
+import AccountAvatar from '@/components/shared/AccountAvatar';
 import { USBStatusBadge } from '@/components/shared/USBStatusBadge';
 import { ScoreBadge } from '@/components/shared/ScoreBadge';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
@@ -165,6 +166,7 @@ export default function ChatsScreen() {
     <Screen backgroundColor={colors.bg} safeAreaEdges={['left', 'right']}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
+          <AccountAvatar />
           <Text style={styles.headerTitle}>對話</Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <TouchableOpacity
