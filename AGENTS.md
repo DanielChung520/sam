@@ -58,13 +58,33 @@ sam/
 
 ## 基礎服務（host-level infra）
 
-- **ArangoDB**：host-level 共用 instance（`arangodb` container，port 8529，rocksdb）
-  - 由 `arangodb` container 提供，不歸任何業務 repo 管
-  - 多業務共享：`aistock` / `sam` / `pcm` 等各佔一個 `_db/<name>`
-  - 連線：`ARANGO_URL=http://localhost:8529`（無 auth 模式）
-  - SAM 使用 DB：`ARANGO_DB=sam`
-  - 健康檢查：`curl http://localhost:8529/_api/version`
-  - 建立新 DB：`curl -X POST http://localhost:8529/_api/database -d '{"name":"sam"}' -H 'Content-Type: application/json'`
+> **架構原則**：基礎服務（ArangoDB、Qdrant、Redis、SeaweedFS）由 host-level `docker-compose.infra.yml` 啟動，**所有業務共享同一個 instance**。業務 repo 不應自帶 infra 設定。
+>
+> 完整說明與 ArangoDB 多業務 DB 創建規範：[`~/github/README.md`](https://github.com/DanielChung520/sam/edit/main/)（host-level infra notes）
+
+### ArangoDB（本專案使用）
+
+| 項目 | 值 |
+|------|-----|
+| Instance | host-level `arangodb` container（不歸 sam repo 管） |
+| URL | `http://localhost:8529`（無 auth） |
+| DB | `sam`（在共用 instance 內，多業務 `_db/<name>` 隔離） |
+| 設定 | `ARANGO_URL=http://localhost:8529`、`ARANGO_DB=sam`（在 repo root `.env`） |
+
+**健康檢查：**
+
+```bash
+curl http://localhost:8529/_api/version
+curl http://localhost:8529/_api/database  # 列出所有 DB，應該看得到 "sam"
+```
+
+**路由連線（`sam` DB 內的 collection 與文件）：**
+
+```bash
+curl http://localhost:8529/_db/sam/_api/collection
+```
+
+如需建立新業務 DB（例如新增 `his` / `kag`），參見 `~/github/README.md` 的「ArangoDB — 多業務共用與 DB 創建」段落。
 
 ## 開發指令
 
