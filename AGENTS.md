@@ -52,8 +52,18 @@ sam/
 | 7010 | Proxy (serve dist/ + proxy API/Webhook) | `la.aiconn.ai` |
 | 7011 | Expo dev server | - |
 | 7012 | Admin Panel (Vite) | `admla.aiconn.ai` |
+| 8531 | ArangoDB（sam-arangodb, DB=`sam`） | 內部 |
 | 9091 | Express backend (API + Webhook) | 內部 |
 | 9092 | Rust API Gateway (sam-service) | 內部 |
+
+## 基礎服務
+
+- **ArangoDB** (`sam-arangodb`)：ArangoDB 3.12 (rocksdb)，獨立 DB `sam`
+  - 啟動：`docker compose up -d`（在 `sam/` repo root）
+  - 連線：`ARANGO_URL=http://localhost:8531`、`ARANGO_DB=sam`
+  - 帳號：`root` / `${ARANGO_ROOT_PASSWORD}`（見 repo root `.env`）
+  - Volume：`sam_sam-arangodb-data`、`sam_sam-arangodb-apps`（持久化）
+  - 健康檢查：`curl -u root:$PASSWORD http://localhost:8531/_api/version`
 
 ## 開發指令
 

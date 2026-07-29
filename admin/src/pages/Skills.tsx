@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import SoapIcon from '@mui/icons-material/Soap'
 import ChatIcon from '@mui/icons-material/Chat'
 import CelebrationIcon from '@mui/icons-material/Celebration'
@@ -83,11 +83,57 @@ const flowsByTitle: Record<string, FlowNode[]> = {
   '其他未歸類圖片解析與處理': imageFlowNodes,
 }
 
+const STORAGE_PREFIX = 'sam.flow.'
+
+function loadStoredFlow(title: string): FlowNode[] | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_PREFIX + title)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as FlowNode[]
+    if (!Array.isArray(parsed)) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function persistFlow(title: string, nodes: FlowNode[]) {
+  try {
+    localStorage.setItem(STORAGE_PREFIX + title, JSON.stringify(nodes))
+  } catch {
+    return
+  }
+}
+
+function getInitialFlow(title: string): FlowNode[] {
+  const stored = loadStoredFlow(title)
+  if (stored && stored.length > 0) return stored
+  return flowsByTitle[title] ?? []
+}
+
 export function Skills() {
   const [view, setView] = useState<'card' | 'list'>('card')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('date')
   const [flowSkill, setFlowSkill] = useState<typeof skillData[0] | null>(null)
+  const [, setFlowVersion] = useState(0)
+  const refreshFlows = () => setFlowVersion((v) => v + 1)
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('sam.flow.cleanup.v1')) return
+      const keys: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k && k.startsWith(STORAGE_PREFIX)) keys.push(k)
+      }
+      keys.forEach((k) => localStorage.removeItem(k))
+      localStorage.setItem('sam.flow.cleanup.v1', '1')
+      if (keys.length > 0) refreshFlows()
+    } catch {
+      return
+    }
+  }, [])
 
   const filtered = useMemo(() => {
     const f = skillData.filter(
@@ -276,9 +322,12 @@ export function Skills() {
         skillTitle={flowSkill?.title || ''}
         skillIcon={flowSkill?.icon || null}
         skillColor={flowSkill?.color || '#3b82f6'}
-        initialNodes={flowSkill ? flowsByTitle[flowSkill.title] || [] : []}
+        initialNodes={flowSkill ? getInitialFlow(flowSkill.title) : []}
         onSave={(nodes) => {
-          console.log('Saved flow for', flowSkill?.title, nodes)
+          if (flowSkill) {
+            persistFlow(flowSkill.title, nodes)
+            refreshFlows()
+          }
         }}
       />
     </>

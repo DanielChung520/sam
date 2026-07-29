@@ -11,6 +11,7 @@ export interface FlowNode {
   desc: string
   color: string
   enabled: boolean
+  pos?: { x: number; y: number }
 }
 
 interface FlowEditorProps {
@@ -26,6 +27,7 @@ interface FlowEditorProps {
 const NODE_WIDTH = 240
 const NODE_HEIGHT = 96
 const H_GAP = 100
+const NODE_Y = NODE_HEIGHT / 2 + 24 // center y of each node (canvas anchor)
 
 function escapeHtml(s: string): string {
   return s
@@ -65,8 +67,8 @@ export function FlowEditor({
           skillColor,
         },
         style: {
-          x: 80 + i * (NODE_WIDTH + H_GAP),
-          y: 200,
+          x: n.pos?.x ?? NODE_WIDTH / 2 + 40 + i * (NODE_WIDTH + H_GAP),
+          y: n.pos?.y ?? NODE_Y,
         },
       })),
       edges: nodes.slice(0, -1).map((_, i) => ({
@@ -76,6 +78,7 @@ export function FlowEditor({
       })),
     })
     graphRef.current.draw()
+    graphRef.current.fitView(24, { duration: 200 })
   }, [nodes, skillColor])
 
   // Initialize G6 graph
@@ -95,8 +98,6 @@ export function FlowEditor({
         type: 'html',
         style: {
           size: [NODE_WIDTH, NODE_HEIGHT],
-          dx: -NODE_WIDTH / 2,
-          dy: -NODE_HEIGHT / 2,
           innerHTML: (d: any) => {
             const { label, desc, color, enabled, step, skillColor } = d.data
             const c = enabled ? color : '#cbd5e1'
@@ -126,12 +127,16 @@ export function FlowEditor({
   <div style="flex:1;min-width:0;overflow:hidden;">
     <div style="
       font-size:14px;font-weight:600;color:#0f172a;
-      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+      line-height:1.3;
+      overflow-wrap:break-word;word-break:break-word;
+      display:-webkit-box;-webkit-line-clamp:2;
+      -webkit-box-orient:vertical;overflow:hidden;
       margin-bottom:3px;
     ">${escapeHtml(label)}</div>
     <div style="
       font-size:11px;color:#64748b;line-height:1.4;
-      display:-webkit-box;-webkit-line-clamp:2;
+      overflow-wrap:break-word;word-break:break-word;
+      display:-webkit-box;-webkit-line-clamp:3;
       -webkit-box-orient:vertical;overflow:hidden;
     ">${escapeHtml(desc)}</div>
   </div>
@@ -161,6 +166,19 @@ export function FlowEditor({
       if (id) setEditingId(String(id))
     })
 
+    graph.on('node:dragend', (evt: any) => {
+      const id = evt.target?.id || evt.targetID
+      if (!id) return
+      const model = graph.getElementPosition(id)
+      if (!model) return
+      const x = Array.isArray(model) ? model[0] : (model as any).x
+      const y = Array.isArray(model) ? model[1] : (model as any).y
+      if (typeof x !== 'number' || typeof y !== 'number') return
+      setNodes((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, pos: { x, y } } : n)),
+      )
+    })
+
     graph.render()
     graphRef.current = graph
 
@@ -177,8 +195,8 @@ export function FlowEditor({
           skillColor,
         },
         style: {
-          x: 80 + i * (NODE_WIDTH + H_GAP),
-          y: 200,
+          x: n.pos?.x ?? NODE_WIDTH / 2 + 40 + i * (NODE_WIDTH + H_GAP),
+          y: n.pos?.y ?? NODE_Y,
         },
       })),
       edges: nodes.slice(0, -1).map((_, i) => ({
@@ -188,6 +206,13 @@ export function FlowEditor({
       })),
     })
     graph.draw()
+    requestAnimationFrame(() => {
+      try {
+        graph.fitView(24, { duration: 200 })
+      } catch {
+        // graph not ready
+      }
+    })
 
     return () => {
       graph.destroy()
@@ -222,7 +247,7 @@ export function FlowEditor({
   }
 
   const handleReset = () => {
-    setNodes(initialNodes)
+    setNodes(initialNodes.map((n) => ({ ...n, pos: undefined })))
     setEditingId(null)
   }
 
@@ -241,8 +266,7 @@ export function FlowEditor({
         style={{
           background: 'var(--bg-card)',
           borderRadius: 16,
-          width: '92vw',
-          maxWidth: 1200,
+          width: '90vw',
           height: '86vh',
           display: 'flex',
           flexDirection: 'column',

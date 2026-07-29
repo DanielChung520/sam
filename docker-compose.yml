@@ -1,0 +1,25 @@
+name: sam
+
+services:
+  arangodb:
+    image: arangodb:3.12
+    container_name: sam-arangodb
+    restart: unless-stopped
+    environment:
+      ARANGO_ROOT_PASSWORD: ${ARANGO_ROOT_PASSWORD:-sam2024}
+      ARANGO_STORAGE_ENGINE: rocksdb
+    ports:
+      - "8531:8529"
+    volumes:
+      - sam-arangodb-data:/var/lib/arangodb3
+      - sam-arangodb-apps:/var/lib/arangodb3-apps
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8529/_api/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  sam-arangodb-data:
+  sam-arangodb-apps:
