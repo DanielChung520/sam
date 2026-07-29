@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
+import { Skills } from './pages/Skills'
 import { Admins } from './pages/Admins'
 import { Accounts } from './pages/Accounts'
 import { Channels } from './pages/Channels'
@@ -39,6 +40,7 @@ function App() {
           }
         >
           <Route index element={<Dashboard />} />
+          <Route path="skills" element={<Skills />} />
           <Route path="admins" element={<Admins />} />
           <Route path="accounts" element={<Accounts />} />
           <Route path="channels" element={<Channels />} />

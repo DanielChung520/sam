@@ -1,13 +1,21 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import SoapIcon from '@mui/icons-material/Soap'
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'
+import PersonIcon from '@mui/icons-material/Person'
+import ChatIcon from '@mui/icons-material/Chat'
+import CreditCardIcon from '@mui/icons-material/CreditCard'
+import SmartToyIcon from '@mui/icons-material/SmartToy'
 
-const topIcons: { icon: string; route: string; label: string }[] = [
-  { icon: '\u2302', route: '/', label: 'Dashboard' },
-  { icon: '\u263A', route: '/admins', label: 'Admins' },
-  { icon: '\u2630', route: '/accounts', label: 'Accounts' },
-  { icon: '\u25A3', route: '/channels', label: 'Channels' },
-  { icon: '\u2709', route: '/cards', label: 'Cards' },
-  { icon: '\u2699', route: '/agent', label: 'Agent' },
+const iconSx = { fontSize: 26 }
+
+const topIcons: { icon: React.ReactNode; route: string; label: string }[] = [
+  { icon: <SoapIcon sx={iconSx} />, route: '/skills', label: 'Skills' },
+  { icon: <AdminPanelSettingsIcon sx={iconSx} />, route: '/admins', label: 'Admins' },
+  { icon: <PersonIcon sx={iconSx} />, route: '/accounts', label: 'Accounts' },
+  { icon: <ChatIcon sx={iconSx} />, route: '/channels', label: 'Channels' },
+  { icon: <CreditCardIcon sx={iconSx} />, route: '/cards', label: 'Cards' },
+  { icon: <SmartToyIcon sx={iconSx} />, route: '/agent', label: 'Agent' },
 ]
 
 const menuGroups = [
@@ -15,6 +23,7 @@ const menuGroups = [
     title: 'Management',
     items: [
       { label: 'Dashboard', route: '/' },
+      { label: 'Skills', route: '/skills' },
       { label: 'Admins', route: '/admins' },
       { label: 'Accounts', route: '/accounts' },
       { label: 'Channels', route: '/channels' },
@@ -29,6 +38,20 @@ const menuGroups = [
     items: [{ label: 'Agent Settings', route: '/agent' }],
   },
 ]
+
+function TooltipBtn({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
+  return (
+    <div className="tooltip-wrap">
+      <button
+        className={`nav-icon-btn ${active ? 'active' : ''}`}
+        onClick={onClick}
+      >
+        {icon}
+      </button>
+      <span className="tooltip">{label}</span>
+    </div>
+  )
+}
 
 export function Sidebar() {
   const navigate = useNavigate()
@@ -53,33 +76,37 @@ export function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <button className="sidebar-logo" onClick={() => navigate('/')} title="LINE\u4EE3\u7406">
-        LA
-      </button>
+      <div className="tooltip-wrap">
+        <button className="sidebar-logo" onClick={() => navigate('/')}>
+          <img src="/aiconn4-ball.png" alt="LINE代理" style={{ height: 30, width: 'auto', objectFit: 'contain' }} />
+        </button>
+        <span className="tooltip">LINE代理</span>
+      </div>
 
       <nav className="sidebar-nav">
         {topIcons.map((item) => (
-          <button
+          <TooltipBtn
             key={item.route}
-            className={`nav-icon-btn ${isActive(item.route) ? 'active' : ''}`}
+            icon={item.icon}
+            label={item.label}
+            active={isActive(item.route)}
             onClick={() => navigate(item.route)}
-            title={item.label}
-          >
-            {item.icon}
-          </button>
+          />
         ))}
       </nav>
 
       <div className="sidebar-spacer" />
 
       <div style={{ position: 'relative' }}>
-        <button
-          className={`nav-icon-btn ${menuOpen ? 'active' : ''}`}
-          onClick={() => setMenuOpen(!menuOpen)}
-          title="Menu"
-        >
-          {'\u25A8'}
-        </button>
+        <div className="tooltip-wrap">
+          <button
+            className={`nav-icon-btn ${menuOpen ? 'active' : ''}`}
+            onClick={() => setMenuOpen(!menuOpen)}
+          >
+            {'\u25A8'}
+          </button>
+          <span className="tooltip">Menu</span>
+        </div>
 
         {menuOpen && (
           <div

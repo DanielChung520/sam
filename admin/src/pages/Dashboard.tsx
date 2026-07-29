@@ -7,6 +7,13 @@ const stats = [
   { icon: '\uD83E\uDD16', value: '1', label: 'Active Agents', route: '/agent' },
 ]
 
+const skills = [
+  { icon: '\uD83D\uDCCB', title: '名片收集與回應', desc: 'LINE 名片自動辨識、存放與設定自動回覆留言' },
+  { icon: '\uD83D\uDCAC', title: '回答與聊天', desc: 'AI 即時回答客戶問題，支援自然語言對話' },
+  { icon: '\uD83C\uDF89', title: '回應祝賀及問安', desc: '自動回覆節慶祝福、生日問候等情感交互' },
+  { icon: '\uD83D\uDDBC\uFE0F', title: '其他未歸類圖片解析與處理', desc: 'AI 圖片辨識，自動分類與處理未歸檔的圖片內容' },
+]
+
 export function Dashboard() {
   const navigate = useNavigate()
 
@@ -30,6 +37,35 @@ export function Dashboard() {
             <div className="stat-label">{s.label}</div>
           </div>
         ))}
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <h2 className="section-title">Skills</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+          {skills.map((s) => (
+            <div
+              key={s.title}
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 12,
+                padding: 16,
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                cursor: 'pointer',
+                transition: 'background 0.15s',
+              }}
+              onMouseOver={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+              onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ fontSize: 24, lineHeight: 1 }}>{s.icon}</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{s.title}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4 }}>{s.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>

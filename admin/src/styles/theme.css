@@ -68,22 +68,58 @@ body {
   flex-shrink: 0;
   padding: 8px 0;
   gap: 4px;
-  border-right: 1px solid rgba(255,255,255,0.06);
 }
 
 .sidebar-logo {
-  width: 36px;
-  height: 36px;
-  background: var(--primary);
-  border-radius: 8px;
+  width: 44px;
+  height: 44px;
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  font-weight: 700;
-  font-size: 13px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   cursor: pointer;
+  border: none;
+  padding: 0;
+}
+
+.tooltip-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.tooltip {
+  position: absolute;
+  left: calc(100% + 8px);
+  background: #1e293b;
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 300;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.tooltip::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-right-color: #1e293b;
+}
+
+.tooltip-wrap:hover .tooltip {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .sidebar-nav {
@@ -91,33 +127,44 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
+  padding: 4px 0;
 }
 
 .nav-icon-btn {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   border: none;
   background: transparent;
   color: var(--text-sidebar);
-  border-radius: 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
-  transition: all 0.15s;
+  font-size: 28px;
+  padding: 0;
+  transition: color 0.15s;
   position: relative;
 }
 
 .nav-icon-btn:hover {
-  background: rgba(255,255,255,0.08);
   color: white;
 }
 
 .nav-icon-btn.active {
+  color: var(--primary);
+}
+
+.nav-icon-btn.active::after {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 24px;
   background: var(--primary);
-  color: white;
+  border-radius: 0 3px 3px 0;
 }
 
 .nav-icon-btn .badge-dot {
@@ -148,8 +195,8 @@ body {
 }
 
 .header-title {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
   color: var(--text);
 }
 

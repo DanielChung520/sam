@@ -59,7 +59,7 @@ export function Login() {
           >
             LA
           </div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>LINE\u4EE3\u7406</h1>
+          <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>LINE代理</h1>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Platform Admin Login</p>
         </div>
 
