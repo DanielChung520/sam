@@ -60,7 +60,7 @@ sam/
 
 > **架構原則**：基礎服務（ArangoDB、Qdrant、Redis、SeaweedFS）由 host-level `docker-compose.infra.yml` 啟動，**所有業務共享同一個 instance**。業務 repo 不應自帶 infra 設定。
 >
-> 完整說明與 ArangoDB 多業務 DB 創建規範：[`~/github/README.md`](https://github.com/DanielChung520/sam/edit/main/)（host-level infra notes）
+> 完整說明與 ArangoDB 多業務 DB 創建規範：[`DanielChung520/workspace-infra`](https://github.com/DanielChung520/workspace-infra)（host-level infra notes）
 
 ### ArangoDB（本專案使用）
 
