@@ -52,18 +52,19 @@ sam/
 | 7010 | Proxy (serve dist/ + proxy API/Webhook) | `la.aiconn.ai` |
 | 7011 | Expo dev server | - |
 | 7012 | Admin Panel (Vite) | `admla.aiconn.ai` |
-| 8531 | ArangoDB（sam-arangodb, DB=`sam`） | 內部 |
+| 8529 | ArangoDB（共用 instance, DB=`sam`） | 內部 |
 | 9091 | Express backend (API + Webhook) | 內部 |
 | 9092 | Rust API Gateway (sam-service) | 內部 |
 
-## 基礎服務
+## 基礎服務（host-level infra）
 
-- **ArangoDB** (`sam-arangodb`)：ArangoDB 3.12 (rocksdb)，獨立 DB `sam`
-  - 啟動：`docker compose up -d`（在 `sam/` repo root）
-  - 連線：`ARANGO_URL=http://localhost:8531`、`ARANGO_DB=sam`
-  - 帳號：`root` / `${ARANGO_ROOT_PASSWORD}`（見 repo root `.env`）
-  - Volume：`sam_sam-arangodb-data`、`sam_sam-arangodb-apps`（持久化）
-  - 健康檢查：`curl -u root:$PASSWORD http://localhost:8531/_api/version`
+- **ArangoDB**：host-level 共用 instance（`arangodb` container，port 8529，rocksdb）
+  - 由 `arangodb` container 提供，不歸任何業務 repo 管
+  - 多業務共享：`aistock` / `sam` / `pcm` 等各佔一個 `_db/<name>`
+  - 連線：`ARANGO_URL=http://localhost:8529`（無 auth 模式）
+  - SAM 使用 DB：`ARANGO_DB=sam`
+  - 健康檢查：`curl http://localhost:8529/_api/version`
+  - 建立新 DB：`curl -X POST http://localhost:8529/_api/database -d '{"name":"sam"}' -H 'Content-Type: application/json'`
 
 ## 開發指令
 
