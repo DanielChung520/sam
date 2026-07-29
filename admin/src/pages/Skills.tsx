@@ -341,6 +341,7 @@ export function Skills() {
 
       {/* Flow editor modal */}
       <FlowEditor
+        key={flowSkill?.title ?? 'none'}
         open={flowSkill !== null}
         onClose={() => setFlowSkill(null)}
         skillTitle={flowSkill?.title || ''}

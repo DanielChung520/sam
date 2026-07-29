@@ -1,24 +1,37 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { post } from '../api/client'
 
 export function Login() {
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (localStorage.getItem('admin_token')) navigate('/', { replace: true })
   }, [navigate])
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!username || !password) {
       setError('Please enter username and password')
       return
     }
-    localStorage.setItem('admin_token', 'mock-jwt-token-' + Date.now())
-    localStorage.setItem('admin_user', JSON.stringify({ username, name: username, role: 'superadmin' }))
-    navigate('/', { replace: true })
+    setError('')
+    setLoading(true)
+    try {
+      const res = await post<{ token: string; user: { id: string; name: string } }>(
+        '/auth/login',
+        { channelId: username, name: username },
+      )
+      localStorage.setItem('admin_token', res.token)
+      localStorage.setItem('admin_user', JSON.stringify({ username, name: res.user.name, role: 'superadmin' }))
+      navigate('/', { replace: true })
+    } catch (err: any) {
+      setError(err?.message || 'Login failed')
+      setLoading(false)
+    }
   }
 
   return (
@@ -104,8 +117,9 @@ export function Login() {
           className="btn btn-primary"
           style={{ width: '100%', padding: '10px', justifyContent: 'center', marginTop: 8 }}
           onClick={handleLogin}
+          disabled={loading}
         >
-          Sign In
+          {loading ? 'Signing in…' : 'Sign In'}
         </button>
       </div>
     </div>

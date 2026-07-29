@@ -52,6 +52,10 @@ export function FlowEditor({
   const [nodes, setNodes] = useState<FlowNode[]>(initialNodes)
   const [editingId, setEditingId] = useState<string | null>(null)
 
+  useEffect(() => {
+    setNodes(initialNodes)
+  }, [initialNodes])
+
   // Sync G6 → React state when nodes change externally
   useEffect(() => {
     if (!graphRef.current) return
@@ -78,7 +82,13 @@ export function FlowEditor({
       })),
     })
     graphRef.current.draw()
-    graphRef.current.fitView(24, { duration: 200 })
+    setTimeout(() => {
+      try {
+        graphRef.current?.fitView(24, { duration: 200 })
+      } catch {
+        return
+      }
+    }, 100)
   }, [nodes, skillColor])
 
   // Initialize G6 graph
@@ -205,14 +215,14 @@ export function FlowEditor({
         target: nodes[i + 1].id,
       })),
     })
-    graph.draw()
-    requestAnimationFrame(() => {
+graph.draw()
+    setTimeout(() => {
       try {
         graph.fitView(24, { duration: 200 })
       } catch {
-        // graph not ready
+        return
       }
-    })
+    }, 200)
 
     return () => {
       graph.destroy()
