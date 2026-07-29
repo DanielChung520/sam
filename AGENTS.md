@@ -1,94 +1,96 @@
-# AGENTS.md — SAM (Sales Assistant Management)
+# AGENTS.md — LINE 代理（LINE Agent Platform）
 
-> Generated 2026-07-28. Update as the repo grows.
+> 最後更新：2026-07-29
 
-## What is SAM
+## 產品定位
 
-An AI-powered **LINE sales assistant management system** with a **hybrid cloud + USB hardware vault** architecture:
+多租戶 LINE OMO 助手平台。業務員申請自己的 LINE Channel → 產生分身助手 → 客戶加好友即可使用 AI 對話、CRM、群發等功能。所有分身共用統一後台 Agent，透過 **Person Token** 隔離資料。
 
-- **LINE OMO** — AI conversation takeover, OCR business card scanning, personalized scheduled broadcast, friend CRM scoring
-- **Taiwan MoE Router** — PII anonymization, sensitive data classification, intelligent model routing (local small model ↔ cheap CN token API ↔ premium API)
-- **USB Hardware Vault** — AES-256 encrypted USB storing all private keys, SeaweedFS document storage, SQLite-vec vector database; cloud has zero data retention
+完整產品架構：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
-Full spec: [`docs/SAM_System_Specification.md`](docs/SAM_System_Specification.md)
+## 傳遞方式
 
-## Architecture summary
+- **Web App**（PWA），不需 APK / iOS App
+- 一般使用者前端：`https://la.aiconn.ai` → proxy:7010 → Express:9091
+- 平台管理後台：`https://admla.aiconn.ai` → Vite:7012
+- 官方網站（規劃中）：`web/` 目錄預留
 
-```
-LINE client → LINE Gateway → MoE Router → LLM Aggregator (CN cheap / official API)
-                                    ↕
-                             USB Hardware Vault (keys, CRM, SeaweedFS)
-```
-
-## Monorepo structure (pnpm workspace)
+## Monorepo 結構（pnpm workspace）
 
 ```
 sam/
-├── client/         Expo (React Native) — all front-end code
-│   ├── app/        Expo Router routing config only (screen names match files)
-│   ├── screens/    Actual page implementations (one dir per screen)
-│   ├── components/ Shared components (Screen, USBStatusBadge, ScoreBadge, ConfirmDialog)
-│   ├── heroui/     HeroUI component library (custom build, do NOT modify)
-│   ├── hooks/      Custom hooks (useSafeRouter, etc.)
-│   ├── contexts/   React Context (AuthContext)
-│   ├── utils/      Utility functions
-│   └── assets/     Static assets (images, fonts)
-├── server/         Express.js backend
-│   └── src/
-│       ├── index.ts          Entrypoint
-│       ├── data/mock.ts      Mock data (contacts, messages, broadcasts, greeting templates, news)
-│       └── routes/           API routes (chats, contacts, broadcasts, workspace)
-├── docs/           Specification files
-├── .docs/          Working notes, chat transcripts
-├── eslint-plugins/ Custom ESLint rules (expo, fontawesome, forbid-emoji, react-native, reanimated)
-├── patches/        expo@54.0.33 patch
-├── .cozeproj/      Coze scaffold scripts (DO NOT MODIFY)
-├── .coze           Coze config (DO NOT MODIFY)
+├── app/             (原 client/) Expo (React Native Web) — 一般使用者前端
+│   ├── app/         Expo Router routing（Tabs + Stack）
+│   ├── screens/     頁面實作（每個 Tab 一個目錄）
+│   ├── components/  共用元件（Screen, AccountAvatar, USBStatusBadge...）
+│   ├── hooks/       自訂 hooks
+│   ├── contexts/    React Context（AuthContext, ThemeContext）
+│   ├── theme/       色彩系統
+│   ├── web/         PWA 靜態資源（manifest, sw.js, index.html）
+│   ├── scripts/     建置腳本（proxy.mjs, post-build.mjs）
+│   └── assets/      圖片等靜態檔案
+├── admin/           Vite + React + TypeScript — 平台管理後台（port 7012）
+│   ├── src/
+│   │   ├── api/         API client (JWT auth)
+│   │   ├── components/  Layout, Sidebar, Header, Footer, Modal
+│   │   ├── pages/       Login, Dashboard, Admins, Accounts, Channels, Cards, Agent
+│   │   └── styles/      theme.css (aistock 風格 layout)
+│   └── vite.config.ts   (port 7012)
+├── server/          Express.js 後端（API + LINE Webhook, port 9091）
+├── service/         Rust (Axum) API Gateway — 統一入口路由到各 Python 服務（port 9092）
+├── web/             官方網站（預留，尚未實作）
+├── docs/            產品架構文件
+├── .docs/           工作筆記、規格文件
+│   └── spec/        21 頁 UI 規格
+└── eslint-plugins/  自訂 ESLint 規則
 ```
 
-## Dev commands
+## 服務埠號
 
-| Command | Where | What |
-|---------|-------|------|
-| `pnpm -w lint:all` | root | TypeScript check + ESLint for client AND server |
-| `pnpm -w lint:client` | root | Lint client only |
-| `pnpm -w lint:server` | root | Lint server only |
-| `pnpm -w validate` | root | Concurrent lint (client + server) |
-| `npm run start` | client/ | `expo start --web --clear` |
-| `npx tsx src/index.ts` | server/ | Start mock API server |
+| 埠 | 服務 | 網域 |
+|----|------|------|
+| 7010 | Proxy (serve dist/ + proxy API/Webhook) | `la.aiconn.ai` |
+| 7011 | Expo dev server | - |
+| 7012 | Admin Panel (Vite) | `admla.aiconn.ai` |
+| 9091 | Express backend (API + Webhook) | 內部 |
+| 9092 | Rust API Gateway (sam-service) | 內部 |
 
-## CRITICAL routing convention
+## 開發指令
 
-- `app/(tabs)/*.tsx` = tab screens. **`app/index.tsx` must NOT exist** when `(tabs)/index.tsx` exists
-- `app/*.tsx` = stack/detail screens (chat-detail, friend-detail, broadcast-create, etc.)
-- Route files ONLY re-export from `screens/`. Example: `app/chat-detail.tsx` → `export { default } from '@/screens/chat-detail'`
-- NEVER put page implementation in `app/` — only in `screens/`
+| 指令 | 說明 |
+|------|------|
+| `pnpm -w lint:all` | TypeScript + ESLint 檢查（含 admin） |
+| `cd app && npm run start` | Expo dev server（port 7011） |
+| `cd admin && npm run dev` | Admin panel dev server（port 7012） |
+| `cd server && npx tsx src/index.ts` | Express API server（port 9091） |
+| `cd service && cargo run` | Rust API Gateway（port 9092） |
+| `cd app && npx expo export -p web && node scripts/post-build.mjs` | Production build |
+| `cd app && node scripts/proxy.mjs` | PWA server（port 7010） |
 
-## Styling
+## 目前階段
 
-- **Uniwind** (TailwindCSS for React Native). Use `className` prop with TW classes
-- Neumorphic design style: soft cards with dual shadow, no borders
-- Color system defined in `DESIGN.md` (emerald #059669 primary, amber accent, slate text)
-- All card containers: `backgroundColor: '#F0F2F5'`, shadow via `shadowColor/shadowOffset/shadowOpacity`
+- ✅ 5 個 Tab 頁面 + 16 個 Detail 頁面 UI 完成
+- ✅ PWA production build + service worker
+- ✅ Express 後端 JWT auth + LINE Webhook
+- ✅ 平台管理後台（Admin Panel）— 6 個管理頁面
+- ✅ Rust API Gateway 基礎架構
+- ⬜ 登入頁面整合（Expo App AuthContext）
+- ⬜ AI Agent 整合 + Webhook 業務邏輯
+- ⬜ 多租戶管理後台（串接真實 API）
 
-## Import alias
+## 管理後台
 
-`@/` maps to `client/`. Always use it: `import { Screen } from '@/components/Screen'`
+| 項目 | 說明 |
+|------|------|
+| 網址 | `https://admla.aiconn.ai` |
+| 預設帳號 | 見 `admin/.env` |
+| 設定檔 | `admin/.env` |
+- ⬜ 官方網站 `web/`
 
-## Dependency management
+## 設計系統
 
-| Scope | Command |
-|-------|---------|
-| client | `cd client && npx expo install <pkg>` (preferred) or `pnpm add <pkg>` (fallback) |
-| server | `cd server && pnpm add <pkg>` |
-| root | `pnpm -w add <pkg>` |
-
-## Mock API
-
-- Server runs independently. `EXPO_PUBLIC_BACKEND_BASE_URL` env var must point to it
-- Mock data lives in `server/src/data/mock.ts` (6 contacts, chat messages, 3 broadcasts, 6 greeting templates, 4 news articles)
-- Routes: `GET /api/v1/chats`, `GET /api/v1/chats/:id`, `POST /api/v1/chats/:id/messages`, `GET /api/v1/contacts`, `GET /api/v1/contacts/:id`, `GET /api/v1/broadcasts`, `GET /api/v1/workspace/news`, `GET /api/v1/workspace/greetings`, `GET /api/v1/workspace/usb`
-
-## Design system reference
-
-See `DESIGN.md` for complete palette (emerald primary, warm neumorphic, no borders, no white card backgrounds, FontAwesome6 icons).
+- **Uniwind**（TailwindCSS for React Native）
+- 新形態設計（軟卡片、雙陰影、無邊框）
+- 主色：翡翠綠 #059669，強調色：琥珀橙 #F97316
+- Admin Panel 採用 aistock 風格（窄 sidebar + header + footer）
+- 完整調色盤：`DESIGN.md`

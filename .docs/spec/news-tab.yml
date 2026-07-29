@@ -1,0 +1,116 @@
+- generic [ref=e10]:
+  - generic [ref=e16]:
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - generic [ref=e19]: 對話
+        - generic [ref=e20]:
+          - generic [ref=e21] [cursor=pointer]: 
+          - generic [ref=e23] [cursor=pointer]: 
+      - generic [ref=e25]:
+        - generic [ref=e26]: 
+        - generic [ref=e27]: USB 已連接 · 地端保護模式
+    - generic [ref=e29]:
+      - generic [ref=e31] [cursor=pointer]:
+        - generic [ref=e32]: "1"
+        - generic [ref=e37]:
+          - generic [ref=e38]:
+            - generic [ref=e39]: 我的助理
+            - generic [ref=e40]: 08:30
+          - generic [ref=e41]:
+            - generic [ref=e42]: 早！今天有 3 位客戶待跟進，需要我幫你擬回覆嗎？
+            - generic [ref=e43]:
+              - generic [ref=e44]: 
+              - generic [ref=e45]: "100"
+              - generic [ref=e46]: 高熱度
+      - generic [ref=e48] [cursor=pointer]:
+        - generic [ref=e49]: "2"
+        - generic [ref=e54]:
+          - generic [ref=e55]:
+            - generic [ref=e56]: 張三
+            - generic [ref=e57]: 14:32
+          - generic [ref=e58]:
+            - generic [ref=e59]: 關於A產品的報價，再麻煩您確認一下
+            - generic [ref=e60]:
+              - generic [ref=e61]: 
+              - generic [ref=e62]: "85"
+              - generic [ref=e63]: 高熱度
+      - generic [ref=e69] [cursor=pointer]:
+        - generic [ref=e70]:
+          - generic [ref=e71]: 李四
+          - generic [ref=e72]: 13:15
+        - generic [ref=e73]:
+          - generic [ref=e74]: 報價單已收到，我再跟主管確認
+          - generic [ref=e75]:
+            - generic [ref=e76]: 
+            - generic [ref=e77]: "62"
+            - generic [ref=e78]: 中等
+      - generic [ref=e84] [cursor=pointer]:
+        - generic [ref=e85]:
+          - generic [ref=e86]: 王五
+          - generic [ref=e87]: 3天前
+        - generic [ref=e88]:
+          - generic [ref=e89]: 好的，下次再聊
+          - generic [ref=e90]:
+            - generic [ref=e91]: 
+            - generic [ref=e92]: "30"
+            - generic [ref=e93]: 低
+      - generic [ref=e95] [cursor=pointer]:
+        - generic [ref=e96]: "1"
+        - generic [ref=e101]:
+          - generic [ref=e102]:
+            - generic [ref=e103]: 陳美玲
+            - generic [ref=e104]: 11:45
+          - generic [ref=e105]:
+            - generic [ref=e106]: 太棒了！我們下週簽約吧
+            - generic [ref=e107]:
+              - generic [ref=e108]: 
+              - generic [ref=e109]: "92"
+              - generic [ref=e110]: 高熱度
+      - generic [ref=e116] [cursor=pointer]:
+        - generic [ref=e117]:
+          - generic [ref=e118]: 林大明
+          - generic [ref=e119]: 45天前
+        - generic [ref=e120]:
+          - generic [ref=e121]: 再聯絡
+          - generic [ref=e122]:
+            - generic [ref=e123]: 
+            - generic [ref=e124]: "8"
+            - generic [ref=e125]: 沉睡
+      - generic [ref=e127] [cursor=pointer]:
+        - generic [ref=e128]: "3"
+        - generic [ref=e133]:
+          - generic [ref=e134]:
+            - generic [ref=e135]: 黃雅婷
+            - generic [ref=e136]: 昨天
+          - generic [ref=e137]:
+            - generic [ref=e138]: 方案B看起來不錯，能再詳細說明嗎？
+            - generic [ref=e139]:
+              - generic [ref=e140]: 
+              - generic [ref=e141]: "55"
+              - generic [ref=e142]: 中等
+  - tablist [ref=e144]:
+    - tab "  新聞" [ref=e146] [cursor=pointer]:
+      - generic [ref=e147]:
+        - generic [ref=e148]: 
+        - generic [ref=e151]: 
+      - generic [ref=e154]: 新聞
+    - tab "  好友" [ref=e156] [cursor=pointer]:
+      - generic [ref=e157]:
+        - generic [ref=e158]: 
+        - generic [ref=e161]: 
+      - generic [ref=e164]: 好友
+    - tab "  聊天" [selected] [ref=e166] [cursor=pointer]:
+      - generic [ref=e167]:
+        - generic [ref=e168]: 
+        - generic [ref=e171]: 
+      - generic [ref=e174]: 聊天
+    - tab "  發送" [ref=e176] [cursor=pointer]:
+      - generic [ref=e177]:
+        - generic [ref=e178]: 
+        - generic [ref=e181]: 
+      - generic [ref=e184]: 發送
+    - tab "  工作區" [ref=e186] [cursor=pointer]:
+      - generic [ref=e187]:
+        - generic [ref=e188]: 
+        - generic [ref=e191]: 
+      - generic [ref=e194]: 工作區
