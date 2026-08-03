@@ -141,6 +141,25 @@ router.post('/:id/messages', async (req: any, res) => {
   if (!text) return res.status(400).json({ error: 'Text is required' });
   try {
     const msg = await createMessage({ channelId, userId, direction: 'out', type: 'text', text });
+
+    // 真正推送到 LINE（app 發訊息 → 客戶收到）；失敗不阻斷（訊息已落庫）
+    try {
+      const { getClientByChannelKey } = await import('../lib/lineClient.js');
+      const cc = await getClientByChannelKey(channelId);
+      if (cc && cc.channel.pushEnabled !== false) {
+        const chunks = text.length > 2000 ? [text.slice(0, 2000), text.slice(2000)] : [text];
+        await cc.client.pushMessage({
+          to: userId,
+          messages: chunks.map((c) => ({ type: 'text' as const, text: c })),
+        });
+        logger.debug('chats.post_pushed', { channelId, userId });
+      } else {
+        logger.debug('chats.post_no_push_client', { channelId, userId });
+      }
+    } catch (e) {
+      logger.warn('chats.post_push_failed', { channelId, userId, error: String(e) });
+    }
+
     res.json({
       data: {
         id: msg._key,
