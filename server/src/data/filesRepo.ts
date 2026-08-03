@@ -1,13 +1,15 @@
 // Files repository (ArangoDB)
 //
 // 每個上傳的檔案對應一筆文件，channelId 強制隔離。
+// shortCode：分享用短碼（8 字元隨機），避免 URL 暴露 fileId/channelId。
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes } from 'node:crypto';
 import { getDb, ensureCollection } from '../data/arango.js';
 
 export interface FileRecord {
   _key: string;
   fileId: string;
+  shortCode: string;
   channelId: string;
   ownerUserId: string;
   storageKey: string;
@@ -21,12 +23,24 @@ export interface FileRecord {
 
 const COLLECTION = 'files';
 
+// base62 短碼（8 字元）：62^8 ≈ 2.2e14 組合，7 天效期內暴力猜測不可行
+const SHORT_CODE_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
+export function generateShortCode(length = 8): string {
+  const bytes = randomBytes(length);
+  let code = '';
+  for (const b of bytes) {
+    code += SHORT_CODE_CHARS[b % SHORT_CODE_CHARS.length];
+  }
+  return code;
+}
+
 export async function ensureFilesCollection(): Promise<void> {
   await ensureCollection(COLLECTION);
 }
 
 export async function createFileRecord(
-  input: Omit<FileRecord, '_key' | 'fileId' | 'createdAt'>,
+  input: Omit<FileRecord, '_key' | 'fileId' | 'shortCode' | 'createdAt'> & { shortCode?: string },
 ): Promise<FileRecord> {
   await ensureFilesCollection();
   const db = getDb();
@@ -34,6 +48,7 @@ export async function createFileRecord(
     ...input,
     _key: randomUUID(),
     fileId: randomUUID(),
+    shortCode: input.shortCode ?? generateShortCode(),
     createdAt: Date.now(),
   };
   await db.collection(COLLECTION).save(record);
@@ -60,6 +75,17 @@ export async function findFileByKey(fileId: string): Promise<FileRecord | null> 
   const cursor = await db.query(
     `FOR f IN ${COLLECTION} FILTER f.fileId == @fileId LIMIT 1 RETURN f`,
     { fileId },
+  );
+  const results = (await cursor.all()) as FileRecord[];
+  return results[0] ?? null;
+}
+
+export async function findByShortCode(code: string): Promise<FileRecord | null> {
+  await ensureFilesCollection();
+  const db = getDb();
+  const cursor = await db.query(
+    `FOR f IN ${COLLECTION} FILTER f.shortCode == @code LIMIT 1 RETURN f`,
+    { code },
   );
   const results = (await cursor.all()) as FileRecord[];
   return results[0] ?? null;

@@ -11,6 +11,7 @@ import {
   createFileRecord,
   findFileById,
   findFileByKey,
+  findByShortCode,
   deleteFileRecord,
   ensureFilesCollection,
   type FileRecord,
@@ -141,11 +142,37 @@ router.delete('/:fileId', async (req: any, res: any) => {
   }
 });
 
-router.get('/share/:token', async (req: any, res: any) => {
+router.get('/share/:code', async (req: any, res: any) => {
   await ensureFilesCollection();
+  const code = req.params.code;
+
+  // 新版：8 字元短碼（無資訊洩漏，DB 查映射 + 效期欄位）
+  if (code.length <= 12 && !code.includes('.')) {
+    const file = await findByShortCode(code);
+    if (!file) {
+      return res.status(404).json({ error: 'link not found' });
+    }
+    const expiresAt = (file.metadata as any)?.shareExpiresAt as number | undefined;
+    if (expiresAt && expiresAt < Date.now()) {
+      return res.status(410).json({ error: 'link expired' });
+    }
+    try {
+      const storage = getFileStorage();
+      const { body, contentType } = await storage.get(file.storageKey);
+      res.setHeader('Content-Type', contentType || file.contentType);
+      res.setHeader('Content-Length', String(body.length));
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.filename)}"`);
+      return res.send(body);
+    } catch (e: unknown) {
+      logger.error('files.share.failed', { fileId: file.fileId, error: String(e) });
+      return res.status(500).json({ error: 'failed to read file' });
+    }
+  }
+
+  // 舊版：HMAC token（相容既有分享連結）
   const tokenMod = await importTokenModule();
   const decoded = tokenMod.verifyShareToken({
-    token: req.params.token,
+    token: code,
     secret: SHARE_SECRET,
   });
   if (!decoded) {

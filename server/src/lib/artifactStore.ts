@@ -5,11 +5,9 @@
 import { randomUUID } from 'node:crypto';
 import { getFileStorage } from './fileStorage.js';
 import { createFileRecord, ensureFilesCollection } from '../data/filesRepo.js';
-import { createShareToken } from './shareToken.js';
 import { markdownToHtml } from './markdownToHtml.js';
 import { logger } from '../agent/logger.js';
 
-const SHARE_SECRET = process.env.FILE_SHARE_SECRET ?? 'sam-share-secret-change-me';
 const EXPIRY_SEC = 7 * 24 * 3600;
 
 function sanitizeName(s: string): string {
@@ -56,22 +54,20 @@ export async function saveArtifact(input: {
     filename: `${safeName}.html`,
     contentType: 'text/html',
     size: Buffer.byteLength(html),
-    metadata: { source: 'agent-artifact', title, markdownKey: mdKey },
+    metadata: {
+      source: 'agent-artifact',
+      title,
+      markdownKey: mdKey,
+      shareExpiresAt: Date.now() + EXPIRY_SEC * 1000,
+    },
     businessOwnerId: input.businessOwnerId,
   });
 
-  const token = createShareToken({
-    fileId: record.fileId,
-    channelId,
-    expiresInSec: EXPIRY_SEC,
-    secret: SHARE_SECRET,
-  });
-
-  logger.info('artifact.saved', { channelId, fileId: record.fileId, title, htmlBytes: Buffer.byteLength(html) });
+  logger.info('artifact.saved', { channelId, fileId: record.fileId, shortCode: record.shortCode, title, htmlBytes: Buffer.byteLength(html) });
 
   return {
     title,
-    shareUrl: `${publicBase()}/api/v1/files/share/${token}`,
+    shareUrl: `${publicBase()}/api/v1/files/share/${record.shortCode}`,
     fileId: record.fileId,
   };
 }
