@@ -31,6 +31,7 @@ interface ChatItem {
   channelKey?: string;
   channelName?: string;
   channelColor?: string;
+  isPrimary?: boolean;
 }
 
 export default function ChatsScreen() {
@@ -151,7 +152,7 @@ export default function ChatsScreen() {
   );
 
   const renderChatItem = ({ item }: { item: ChatItem }) => {
-    const isPrimary = item.channelKey && activeChannel && item.channelKey === activeChannel.key;
+    const isPrimary = item.isPrimary === true;
     return (
       <TouchableOpacity
         style={styles.chatCard}

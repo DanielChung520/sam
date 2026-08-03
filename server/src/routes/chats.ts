@@ -31,7 +31,7 @@ router.get('/', async (req: any, res) => {
   const channelId = getChannelId(req);
 
   // 合併模式：未指定 channel → 查名下所有 channels
-  let channelsToLoad: { key: string; name: string; color: string }[] = [];
+  let channelsToLoad: { key: string; name: string; color: string; destination?: string }[] = [];
   if (channelId) {
     channelsToLoad = [{ key: channelId, name: '', color: CHANNEL_COLORS[0] }];
   } else {
@@ -41,7 +41,12 @@ router.get('/', async (req: any, res) => {
       const owned = await listChannelsByOwner(ownerId);
       channelsToLoad = owned
         .filter((c) => c.enabled !== false)
-        .map((c, i) => ({ key: c._key, name: c.name, color: CHANNEL_COLORS[i % CHANNEL_COLORS.length] }));
+        .map((c, i) => ({
+          key: c._key,
+          name: c.name,
+          color: CHANNEL_COLORS[i % CHANNEL_COLORS.length],
+          destination: c.destination,
+        }));
     } catch (e) {
       logger.error('chats.ownerChannels.failed', { error: String(e) });
       return res.status(500).json({ error: String(e) });
@@ -70,6 +75,8 @@ router.get('/', async (req: any, res) => {
           channelKey: ch.key,
           channelName: ch.name,
           channelColor: ch.color,
+          // 主身本人：userId == channel destination（業務員自己加了自己的分身）
+          isPrimary: !!ch.destination && c.userId === ch.destination,
         });
       }
     }
