@@ -13,6 +13,7 @@
 | 文件 | 內容 |
 |------|------|
 | [`.docs/AGENT_LAYER_ARCHITECTURE.md`](.docs/AGENT_LAYER_ARCHITECTURE.md) | **完整架構說明**（LA / Channel / Agent / Skill / Sub-agent / SeaweedFS / token URL / Admin 規劃）|
+| [`.docs/INTENT_ENGINE_SPEC.md`](.docs/INTENT_ENGINE_SPEC.md) | **意圖引擎規格**（規則結構 名稱/型別/細分型/判斷/行為、匹配流程、seed、技術債）|
 | [`.docs/init.md`](.docs/init.md) | SAM 原 spec（系統定位、MoE 路由、USB 保險箱）|
 | [`.docs/spec/index.md`](.docs/spec/index.md) | 21 個 UI 頁面規格索引 |
 
