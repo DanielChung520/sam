@@ -36,14 +36,31 @@ LA（LINE Assistant）= 業務員的分身
    │
    ├── 多個業務員 → 多個 LA → 多個 LINE Channel
    │
-   └── 所有 channel 共用**一個** Agent Orchestration
+   └── 每個 channel 獨立處理單元（AgentInstance）
          │
+         ├── Orchestration（系統固定角色，自動綁定）
          ├── Skills（stateless 程序包）
          ├── MCP（protocol，可選）
          └── Sub-agents（taskforge 等）
 ```
 
 每個 channel 的資料**完全隔離**（Redis key、ArangoDB query、SeaweedFS path 都帶 channelId）。
+
+#### 1.1.1 Channel 建立流程（user 確認 2026-08-03）
+
+```
+建立 Channel（admin 填 LINE credential）
+  → 系統自動生成 channel_id（UUID）
+  → 系統自動綁定 Orchestration Agent（linkedAgentKey = 固定的 orchestration 角色，如 Polaris）
+  → 系統自動生成獨立 webhook 路由（/webhook/{channel_id}）
+  → 完成 ✅ admin 不需要選擇任何 Agent
+```
+
+**設計決策**：
+1. **Orchestration 是系統固定角色** — 如同 Sisyphus 是總編排入口，不是 admin 從列表挑選的選項。Channel 建立時自動綁定，`linkedAgentKey` 對 admin 是**唯讀**（顯示而非選擇）。
+2. **「授權 Agents」才是 admin 需要決定的** — 額外開放哪些 agent 給此 channel（多選，多對多）。
+3. **每個 channel 有獨立 webhook** — LINE 後台可為不同 channel 設定不同 webhook URL（對應 `/webhook/{channel_id}`），或共用 `/webhook` 靠 destination 查詢（兩者皆支援，見 §10.4 Phase W）。
+4. **Skills 全開** — skills 是 agent 的能力指導（enabledSkills 白名單），不在 channel 層勾選。
 
 ### 1.2 傳遞方式
 

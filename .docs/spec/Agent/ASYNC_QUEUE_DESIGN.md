@@ -42,7 +42,7 @@ LINE user
 webhook（編排層 — 共享、無狀態、輕量）
   1. signature 驗證
   2. destination → channel（ArangoDB 查詢）
-  3. Registry.get(channelId) → AgentInstance
+  3. Registry.get(channelId) → AgentInstance（Orchestration 自動綁定，admin 不需選擇）
   4. 入 instance 的 async queue
   5. 立即回 200 ✅（不阻塞）
   │
