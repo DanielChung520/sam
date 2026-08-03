@@ -930,15 +930,48 @@
           {
             "id": "greet-1",
             "type": "trigger",
-            "label": "接收觸發事件",
-            "desc": "OCR 分類賀卡/問安結果，或排程觸發（節慶/生日）",
+            "label": "接收觸發事件並確認分類",
+            "desc": "接收 OCR 分類結果或排程觸發，先確認圖片分類：\n• 問安卡 / 祝福賀卡 → 進入本流程（祝賀回覆）\n• 名片 → 分流至「名片收集與回應」skill\n• 其他 → 分流至「其他圖片解析」",
             "color": "#6366f1",
             "enabled": true,
             "config": {
-              "source": "OCR 子流程 / 排程"
+              "source": "OCR 子流程 / 排程",
+              "acceptTypes": [
+                "問安卡",
+                "祝福賀卡"
+              ]
             },
-            "inputs": "觸發來源：\n• OCR 分類結果（問安卡/祝福賀卡）\n• 排程事件（節慶/生日）\n{ type, festival/period, content, imageUri, channelId }",
-            "outputs": "觸發事件資料轉下游：\n{ type, festival, period, greeting, imageUri, channelId, timestamp }"
+            "inputs": "觸發來源：\n• OCR 分類結果\n• 排程事件（節慶/生日）\n{ type, festival/period, content, imageUri, channelId }\n\n分類確認：type 必須為「問安卡」或「祝福賀卡」",
+            "outputs": "確認通過 → 轉下游祝賀處理：\n{ type, festival, period, greeting, imageUri, channelId, timestamp }\n\n確認不通過 → 分流：名片 → card-collection；其他 → image-other",
+            "propsSchema": [
+              {
+                "name": "source",
+                "label": "觸發來源",
+                "type": "select",
+                "default": "OCR",
+                "options": [
+                  {
+                    "label": "OCR 子流程（圖片分類）",
+                    "value": "OCR"
+                  },
+                  {
+                    "label": "排程事件（節慶/生日）",
+                    "value": "排程"
+                  }
+                ],
+                "desc": "觸發來源。"
+              },
+              {
+                "name": "acceptTypes",
+                "label": "接受的圖片分類",
+                "type": "json",
+                "default": [
+                  "問安卡",
+                  "祝福賀卡"
+                ],
+                "desc": "僅此分類進入祝賀流程；名片分流至名片收集 skill，其他分流至其他圖片解析。"
+              }
+            ]
           },
           {
             "id": "greet-2",

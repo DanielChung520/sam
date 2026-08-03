@@ -90,8 +90,8 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     id: 'greeting',
-    title: '打招呼',
-    desc: '回應使用者招呼、寒暄，並自我介紹與提示 / 工作清單（賀卡/問安自動回覆已整合於 OCR 解析）',
+    title: '回應祝賀及問安',
+    desc: '賀卡 / 問安圖片自動回覆：收到節慶祝賀或問安圖片時，依節慶/時段自動回覆祝福語（整合於 OCR 解析流程）',
     tag: 'Greeting',
     color: '#f59e0b',
     icon: 'Celebration',
@@ -99,6 +99,15 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     enabled: true,
     group: '客服',
     hasFlow: true,
+    inputSchema: [
+      { name: 'type', type: 'enum', required: true, desc: '問安卡 / 祝福賀卡（OCR 分類結果）' },
+      { name: 'festival', type: 'string', required: false, desc: '節慶名稱（祝福賀卡）' },
+      { name: 'greeting_period', type: 'string', required: false, desc: '問安時段（問安卡）' },
+      { name: 'greeting_content', type: 'string', required: false, desc: '賀卡/問安原文內容' },
+    ],
+    outputSchema: [
+      { name: 'reply', type: 'string', desc: '個人化祝賀/問安回覆（LLM 生成，1-2 句）' },
+    ],
   },
   {
     id: 'image-other',

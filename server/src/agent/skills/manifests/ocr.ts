@@ -2,9 +2,11 @@
 // 圖片解析：名片 / 問安卡 / 祝福賀卡 / 其他 — 透過 dllm VL 模型輸出結構化 JSON
 
 import type { SkillManifest } from '../../types.js';
-import { registerInlineHandler } from '../../skillExecutor.js';
+import { registerInlineHandler, getSkillExecutor } from '../../skillExecutor.js';
+import { getSkillRegistry } from '../../skillRegistry.js';
 import { getFileStorage } from '../../../lib/fileStorage.js';
 import { logger } from '../../logger.js';
+import { isGreetingType, generateGreetingReply } from '../../greetingService.js';
 
 const DLLM_API_BASE = process.env.LLM_API_BASE ?? 'http://localhost:11400/v1';
 const DLLM_API_KEY = process.env.LLM_API_KEY ?? '';
@@ -65,41 +67,6 @@ async function recognizeImage(imageB64: string): Promise<string> {
   }
   const j = (await res.json()) as any;
   return j?.choices?.[0]?.message?.content ?? '';
-}
-
-// 生成個人化祝賀/問安回覆（LLM 文字模型）
-async function generateGreetingReply(parsed: any): Promise<string> {
-  const type = parsed.type ?? '';
-  const festival = parsed.festival ?? '';
-  const period = parsed.greeting_period ?? '';
-  const content = parsed.greeting_content ?? '';
-  const textModel = process.env.LLM_MODEL ?? 'Qwen3-8B-AWQ';
-
-  const isFestival = type.includes('祝福') || !!festival;
-  const scene = isFestival ? `節慶「${festival || '祝賀'}」` : `問安時段「${period || '問候'}」`;
-  const prompt = `收到客戶寄來的${type}（${scene}），圖片內容：${content || parsed.summary || ''}。
-請以溫暖、真摯、簡短（1-2 句）的繁體中文回覆對方，感謝並回應對方的心意，不要自我介紹。`;
-
-  const res = await fetch(`${DLLM_API_BASE}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(DLLM_API_KEY ? { Authorization: `Bearer ${DLLM_API_KEY}` } : {}),
-    },
-    body: JSON.stringify({
-      model: textModel,
-      messages: [
-        { role: 'system', content: '你是親切溫暖的業務助理，回覆簡短真摯。' },
-        { role: 'user', content: prompt },
-      ],
-      max_tokens: 200,
-      temperature: 0.7,
-    }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
-  const j = (await res.json()) as any;
-  return j?.choices?.[0]?.message?.content?.trim() ?? '';
 }
 
 // 依 type 產生給 LINE 的回覆（人讀，非原始 JSON）
@@ -166,10 +133,11 @@ const handler = async (args: Record<string, unknown>): Promise<{ ok: boolean; ou
     }
 
     const base = formatReply(parsed, receivedAt);
+    const type = parsed.type ?? '';
 
-    // 賀卡 / 問安卡：生成個人化祝賀回覆並置頂
-    const isGreetingType = (parsed.type ?? '').includes('問安') || (parsed.type ?? '').includes('祝福');
-    if (isGreetingType) {
+    // 分流處理：依 OCR 分類
+    if (isGreetingType(type)) {
+      // 問安卡 / 祝福賀卡 → 祝賀回覆
       try {
         const reply = await generateGreetingReply(parsed);
         if (reply) {
@@ -177,6 +145,21 @@ const handler = async (args: Record<string, unknown>): Promise<{ ok: boolean; ou
         }
       } catch (e) {
         logger.warn('ocr.greeting_generation_failed', { storageKey: media.storageKey, error: String(e) });
+      }
+    } else if (type.includes('名片')) {
+      // 名片 → 名片收集與回應 skill（感謝回覆）
+      try {
+        const reg = await getSkillRegistry();
+        const cardSkill = reg.get('card-collection');
+        if (cardSkill) {
+          const conv = { id: `card_${media.storageKey ?? Date.now()}`, userId: 'u', channelId: 'c', state: 'idle' as const, history: [], context: {}, createdAt: Date.now(), updatedAt: Date.now(), expiresAt: Date.now() + 1000 };
+          const cardResult = await getSkillExecutor().execute(cardSkill, parsed, conv as any);
+          if (cardResult.ok && cardResult.output) {
+            return { ok: true, output: `${cardResult.output}\n\n${base}` };
+          }
+        }
+      } catch (e) {
+        logger.warn('ocr.card_fallback', { storageKey: media.storageKey, error: String(e) });
       }
     }
 
