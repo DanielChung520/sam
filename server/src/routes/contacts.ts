@@ -1,69 +1,103 @@
+// Contacts API — 好友列表/詳情/訊息（ArangoDB 真實資料）
+//
+// 多租戶：每個請求帶 channelId（業務員的 LINE channel），只回該 channel 的好友。
+// 資料來源：webhook 事件累積（contactRepo）+ 訊息（messageRepo）
+
 import { Router } from 'express';
-import { contacts, chatMessages } from '../data/mock.js';
+import { listContactsByChannel, findContact, type Contact } from '../data/contactRepo.js';
+import { listMessages } from '../data/messageRepo.js';
+import { logger } from '../agent/logger.js';
 
 const router = Router();
 
-// GET /api/v1/contacts - 好友列表
-router.get('/', (req, res) => {
-  const { tag, search } = req.query;
-  let result = [...contacts];
+function getChannelId(req: any): string | undefined {
+  const q = req.query?.channelId;
+  if (typeof q === 'string' && q) return q;
+  const h = req.headers?.['x-channel-id'];
+  if (typeof h === 'string' && h) return h;
+  return undefined;
+}
 
-  if (tag && typeof tag === 'string') {
-    result = result.filter(c => c.tags.includes(tag));
+function toDto(c: Contact): Record<string, unknown> {
+  return {
+    id: c.userId,                 // 用 LINE userId 當 id（取代 mock 的數字 id）
+    name: c.displayName,
+    company: '',
+    title: '',
+    phone: '',
+    email: '',
+    address: '',
+    score: c.score ?? 0,
+    tags: c.tags ?? [],
+    avatar: c.pictureUrl ?? '',
+    lastMessage: '',
+    lastMessageTime: '',
+    unreadCount: c.unreadCount ?? 0,
+    messageCount7d: 0,
+    replySeconds: 0,
+    proactiveCount: 0,
+    turnCount: 0,
+    badge: getScoreBadge(c.score ?? 0),
+  };
+}
+
+// GET /api/v1/contacts?channelId=xxx - 好友列表
+router.get('/', async (req: any, res) => {
+  const channelId = getChannelId(req);
+  if (!channelId) return res.status(400).json({ error: 'channelId required' });
+  try {
+    const contacts = await listContactsByChannel(channelId);
+    const { tag, search } = req.query;
+    let result = contacts;
+    if (tag && typeof tag === 'string') {
+      result = result.filter((c) => (c.tags ?? []).includes(tag));
+    }
+    if (search && typeof search === 'string') {
+      const q = search.toLowerCase();
+      result = result.filter((c) => c.displayName.toLowerCase().includes(q));
+    }
+    res.json({ data: result.map(toDto) });
+  } catch (e) {
+    logger.error('contacts.list.failed', { error: String(e) });
+    res.status(500).json({ error: String(e) });
   }
-  if (search && typeof search === 'string') {
-    const q = search.toLowerCase();
-    result = result.filter(c =>
-      c.name.toLowerCase().includes(q) ||
-      c.company.toLowerCase().includes(q) ||
-      c.title.toLowerCase().includes(q)
-    );
-  }
-
-  // 計算積分徽章
-  const withBadges = result.map(c => ({
-    ...c,
-    badge: getScoreBadge(c.score),
-  }));
-
-  res.json({ data: withBadges });
 });
 
-// GET /api/v1/contacts/:id - 好友詳情
-router.get('/:id', (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const contact = contacts.find(c => c.id === id);
-  if (!contact) {
-    res.status(404).json({ error: 'Contact not found' });
-    return;
+// GET /api/v1/contacts/:id?channelId=xxx - 好友詳情
+router.get('/:id', async (req: any, res) => {
+  const channelId = getChannelId(req);
+  if (!channelId) return res.status(400).json({ error: 'channelId required' });
+  const userId = req.params.id;
+  try {
+    const contact = await findContact(channelId, userId);
+    if (!contact) return res.status(404).json({ error: 'Contact not found' });
+    res.json({ data: toDto(contact) });
+  } catch (e) {
+    logger.error('contacts.get.failed', { error: String(e) });
+    res.status(500).json({ error: String(e) });
   }
-  res.json({
-    data: {
-      ...contact,
-      badge: getScoreBadge(contact.score),
-    },
-  });
 });
 
-// PATCH /api/v1/contacts/:id - 更新積分
-router.patch('/:id', (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const contact = contacts.find(c => c.id === id);
-  if (!contact) {
-    res.status(404).json({ error: 'Contact not found' });
-    return;
+// GET /api/v1/contacts/:id/messages?channelId=xxx - 對話訊息
+router.get('/:id/messages', async (req: any, res) => {
+  const channelId = getChannelId(req);
+  if (!channelId) return res.status(400).json({ error: 'channelId required' });
+  const userId = req.params.id;
+  try {
+    const messages = await listMessages(channelId, userId, 100);
+    // 轉成 client 預期的格式（昇冪：舊→新）
+    const formatted = [...messages].reverse().map((m) => ({
+      id: m._key,
+      senderId: m.direction === 'in' ? m.userId : 'me',
+      text: m.text ?? '',
+      time: new Date(m.createdAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }),
+      type: m.type === 'text' ? 'text' : 'image',
+    }));
+    res.json({ data: formatted });
+  } catch (e) {
+    logger.error('contacts.messages.failed', { error: String(e) });
+    res.status(500).json({ error: String(e) });
   }
-  const { score, tags } = req.body;
-  if (score !== undefined) contact.score = score;
-  if (tags !== undefined) contact.tags = tags;
-  res.json({ data: { ...contact, badge: getScoreBadge(contact.score) } });
-});
-
-// GET /api/v1/contacts/:id/messages - 對話訊息
-router.get('/:id/messages', (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const messages = chatMessages[id] || [];
-  res.json({ data: messages });
 });
 
 function getScoreBadge(score: number): { emoji: string; label: string; color: string } {

@@ -142,10 +142,25 @@ router.post('/:channelPath?', async (req: any, res: any) => {
 
   for (const event of events) {
     const userId = (event as any).source?.userId;
-    if (event.type !== 'message' || !userId) continue;
+    if (!userId) continue;
+
+    // follow / unfollow 事件 → 更新好友清單
+    if (event.type === 'follow' || event.type === 'unfollow') {
+      await handleFollowEvent(client, channel, channelId, userId, event.type === 'follow');
+      continue;
+    }
+    // join/leave（群組）暫不處理
+    if (event.type === 'join' || event.type === 'leave') continue;
+
+    if (event.type !== 'message') continue;
     const messageEvent = event as any;
     const msgType: string = messageEvent.message?.type ?? '';
     const sourceType: string = (event as any).source?.type ?? 'user';
+
+    // 訊息落庫（真實對話資料）
+    await persistIncomingMessage(channelId, userId, messageEvent.message, client).catch((e) =>
+      logger.warn('webhook.message_persist_failed', { channelId, userId, error: String(e) })
+    );
 
     if (!shouldRespondByMessage(sourceType, msgType, messageEvent.message, businessOwnerId)) {
       logger.debug('webhook.skipped_group_no_mention', { userId, channelId, sourceType });
@@ -188,6 +203,99 @@ router.post('/:channelPath?', async (req: any, res: any) => {
 
 function replyTokenOf(event: any): string | undefined {
   return event?.replyToken;
+}
+
+// follow/unfollow 事件 → 新增/封鎖好友
+async function handleFollowEvent(
+  client: messagingApi.MessagingApiClient | null,
+  channel: Channel | null,
+  channelId: string,
+  userId: string,
+  isFollow: boolean,
+): Promise<void> {
+  try {
+    const { upsertContact, findContact } = await import('../data/contactRepo.js');
+    if (isFollow) {
+      let displayName = `好友 ${userId.slice(0, 6)}`;
+      let pictureUrl: string | undefined;
+      if (client) {
+        try {
+          const profile = await client.getProfile(userId);
+          displayName = profile.displayName || displayName;
+          pictureUrl = profile.pictureUrl;
+        } catch {
+          /* getProfile 失敗仍建立 contact */
+        }
+      }
+      await upsertContact({
+        channelId,
+        userId,
+        displayName,
+        pictureUrl,
+        tags: [],
+        score: 0,
+        unreadCount: 0,
+        isBlocked: false,
+        followedAt: Date.now(),
+      });
+      logger.info('webhook.follow', { channelId, userId, displayName });
+    } else {
+      const existing = await findContact(channelId, userId);
+      if (existing) {
+        await upsertContact({ ...existing, isBlocked: true });
+      }
+      logger.info('webhook.unfollow', { channelId, userId });
+    }
+  } catch (e) {
+    logger.warn('webhook.follow_event_failed', { channelId, userId, error: String(e) });
+  }
+}
+
+// 收到的訊息寫入 messages collection
+async function persistIncomingMessage(
+  channelId: string,
+  userId: string,
+  message: any,
+  client: messagingApi.MessagingApiClient | null,
+): Promise<void> {
+  const { createMessage } = await import('../data/messageRepo.js');
+  const { upsertContact } = await import('../data/contactRepo.js');
+
+  await createMessage({
+    channelId,
+    userId,
+    direction: 'in',
+    type: message?.type ?? 'text',
+    text: message?.type === 'text' ? (message.text ?? '') : undefined,
+    replyToken: undefined,
+  });
+
+  // 同時確保 contact 存在（來訊 = 是好友）
+  const existing = await (await import('../data/contactRepo.js')).findContact(channelId, userId);
+  if (!existing) {
+    let displayName = `好友 ${userId.slice(0, 6)}`;
+    let pictureUrl: string | undefined;
+    if (client) {
+      try {
+        const profile = await client.getProfile(userId);
+        displayName = profile.displayName || displayName;
+        pictureUrl = profile.pictureUrl;
+      } catch { /* ignore */ }
+    }
+    await upsertContact({
+      channelId,
+      userId,
+      displayName,
+      pictureUrl,
+      tags: [],
+      score: 0,
+      unreadCount: 1,
+      isBlocked: false,
+      followedAt: Date.now(),
+    });
+  } else {
+    await upsertContact({ ...existing, unreadCount: (existing.unreadCount ?? 0) + 1, lastMessageAt: Date.now() });
+  }
 }
 
 // 背景 worker：處理一條入隊訊息（text 或 media），回覆用 reply 或 push

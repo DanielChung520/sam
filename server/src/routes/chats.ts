@@ -1,80 +1,21 @@
+// Chats API — 對話列表/詳情/發送（ArangoDB 真實資料）
+//
+// 多租戶：每個請求帶 channelId。資料來源：messageRepo（webhook 累積）
+
 import { Router } from 'express';
-import { contacts, chatMessages } from '../data/mock.js';
+import { listContactsByChannel } from '../data/contactRepo.js';
+import { listMessages, createMessage, listLastMessagesByChannel } from '../data/messageRepo.js';
+import { logger } from '../agent/logger.js';
 
 const router = Router();
 
-// GET /api/v1/chats - 對話列表
-router.get('/', (req, res) => {
-  const chatList = contacts
-    .filter(c => chatMessages[c.id] && chatMessages[c.id].length > 0)
-    .map(c => {
-      const msgs = chatMessages[c.id];
-      const lastMsg = msgs[msgs.length - 1];
-      return {
-        id: c.id,
-        name: c.name,
-        avatar: c.avatar,
-        lastMessage: lastMsg.text,
-        lastMessageTime: lastMsg.time,
-        unreadCount: c.unreadCount,
-        score: c.score,
-        badge: getScoreBadge(c.score),
-      };
-    })
-    .sort((a, b) => {
-      // 有未讀的排前面
-      if (a.unreadCount > 0 && b.unreadCount === 0) return -1;
-      if (a.unreadCount === 0 && b.unreadCount > 0) return 1;
-      return 0;
-    });
-
-  res.json({ data: chatList });
-});
-
-// GET /api/v1/chats/:id - 對話詳情（含好友資訊與訊息）
-router.get('/:id', (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const contact = contacts.find(c => c.id === id);
-  if (!contact) {
-    res.status(404).json({ error: 'Contact not found' });
-    return;
-  }
-  const messages = chatMessages[id] || [];
-  res.json({
-    data: {
-      contact: {
-        id: contact.id,
-        name: contact.name,
-        avatar: contact.avatar,
-        title: contact.title,
-        company: contact.company,
-        score: contact.score,
-        badge: getScoreBadge(contact.score),
-      },
-      messages,
-    },
-  });
-});
-
-// POST /api/v1/chats/:id/messages - 發送訊息
-router.post('/:id/messages', (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const { text } = req.body;
-  if (!text) {
-    res.status(400).json({ error: 'Text is required' });
-    return;
-  }
-  const newMsg = {
-    id: Date.now(),
-    senderId: 'me' as const,
-    text,
-    time: new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }),
-    type: 'text' as const,
-  };
-  if (!chatMessages[id]) chatMessages[id] = [];
-  chatMessages[id].push(newMsg);
-  res.json({ data: newMsg });
-});
+function getChannelId(req: any): string | undefined {
+  const q = req.query?.channelId;
+  if (typeof q === 'string' && q) return q;
+  const h = req.headers?.['x-channel-id'];
+  if (typeof h === 'string' && h) return h;
+  return undefined;
+}
 
 function getScoreBadge(score: number): { emoji: string; label: string; color: string } {
   if (score >= 80) return { emoji: '🔥🔥', label: '高熱度', color: '#EF4444' };
@@ -82,5 +23,105 @@ function getScoreBadge(score: number): { emoji: string; label: string; color: st
   if (score >= 10) return { emoji: '🌱', label: '低', color: '#10B981' };
   return { emoji: '💤', label: '沉睡', color: '#94A3B8' };
 }
+
+function fmtTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+}
+
+router.get('/', async (req: any, res) => {
+  const channelId = getChannelId(req);
+  if (!channelId) return res.status(400).json({ error: 'channelId required' });
+  try {
+    const [contacts, lastMsgs] = await Promise.all([
+      listContactsByChannel(channelId),
+      listLastMessagesByChannel(channelId),
+    ]);
+    const list = contacts
+      .filter((c) => lastMsgs[c.userId])
+      .map((c) => {
+        const last = lastMsgs[c.userId];
+        return {
+          id: c.userId,
+          name: c.displayName,
+          avatar: c.pictureUrl ?? '',
+          lastMessage: last?.text ?? '',
+          lastMessageTime: last ? fmtTime(last.createdAt) : '',
+          unreadCount: c.unreadCount ?? 0,
+          score: c.score ?? 0,
+          badge: getScoreBadge(c.score ?? 0),
+        };
+      })
+      .sort((a, b) => {
+        if (a.unreadCount > 0 && b.unreadCount === 0) return -1;
+        if (a.unreadCount === 0 && b.unreadCount > 0) return 1;
+        return 0;
+      });
+    res.json({ data: list });
+  } catch (e) {
+    logger.error('chats.list.failed', { error: String(e) });
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get('/:id', async (req: any, res) => {
+  const channelId = getChannelId(req);
+  if (!channelId) return res.status(400).json({ error: 'channelId required' });
+  const userId = req.params.id;
+  try {
+    const [contacts, messages] = await Promise.all([
+      listContactsByChannel(channelId),
+      listMessages(channelId, userId, 100),
+    ]);
+    const contact = contacts.find((c) => c.userId === userId);
+    if (!contact) return res.status(404).json({ error: 'Contact not found' });
+    const formatted = [...messages].reverse().map((m) => ({
+      id: m._key,
+      senderId: m.direction === 'in' ? m.userId : 'me',
+      text: m.text ?? '',
+      time: fmtTime(m.createdAt),
+      type: m.type === 'text' ? 'text' : 'image',
+    }));
+    res.json({
+      data: {
+        contact: {
+          id: contact.userId,
+          name: contact.displayName,
+          avatar: contact.pictureUrl ?? '',
+          title: '',
+          company: '',
+          score: contact.score ?? 0,
+          badge: getScoreBadge(contact.score ?? 0),
+        },
+        messages: formatted,
+      },
+    });
+  } catch (e) {
+    logger.error('chats.get.failed', { error: String(e) });
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post('/:id/messages', async (req: any, res) => {
+  const channelId = getChannelId(req);
+  if (!channelId) return res.status(400).json({ error: 'channelId required' });
+  const userId = req.params.id;
+  const { text } = req.body ?? {};
+  if (!text) return res.status(400).json({ error: 'Text is required' });
+  try {
+    const msg = await createMessage({ channelId, userId, direction: 'out', type: 'text', text });
+    res.json({
+      data: {
+        id: msg._key,
+        senderId: 'me',
+        text,
+        time: fmtTime(msg.createdAt),
+        type: 'text',
+      },
+    });
+  } catch (e) {
+    logger.error('chats.post.failed', { error: String(e) });
+    res.status(500).json({ error: String(e) });
+  }
+});
 
 export default router;
