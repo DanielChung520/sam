@@ -162,6 +162,39 @@ export class PolarisPipeline {
       ? this.formatAgentPersonaContext(agentConfig)
       : `你是 ${target.name}。`;
 
+    // slash 指向 sub-agent（如 /Spica 任務）：直接委派給該 agent，
+    // 避免純參數交給主 agent 被誤判成問候/閒聊。
+    if (target.type === 'sub_agent') {
+      const delegated = await delegateToAgent({
+        agentName: target.name,
+        userMessage: target.remainingArgs || target.name,
+        depth: 0,
+        history: [],
+        customerId: input.userId,
+        channelId: input.channelId,
+        systemContext: personaContext,
+      });
+      if (this.enableExtraction) {
+        enqueueExtraction({
+          customerId: input.userId,
+          channelId: input.channelId,
+          messages: [
+            { role: 'user', content: text, at: Date.now() },
+            { role: 'agent', content: delegated.text, at: Date.now() },
+          ],
+        });
+      }
+      return {
+        text: delegated.text,
+        intent: { type: 'chitchat' },
+        conversationId: input.conversationId ?? input.userId,
+        state: 'idle',
+        reset: false,
+        slashTarget: target,
+      };
+    }
+
+    // main_agent（如 /Polaris 任務）：帶 persona 讓主 agent 以該角色回應
     const enrichedInput: HandleMessageInput = {
       ...input,
       text: target.remainingArgs || text,
