@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,24 @@ export default function WorkspaceScreen() {
       marginBottom: 12,
       letterSpacing: 0.2,
     },
+    toast: {
+      position: 'absolute',
+      left: 32,
+      right: 32,
+      bottom: 110,
+      backgroundColor: c.text,
+      borderRadius: 14,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      alignItems: 'center',
+      shadowColor: c.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 8,
+      zIndex: 100,
+    },
+    toastText: { fontSize: 14, fontWeight: '600', color: c.bg, textAlign: 'center' },
     statsGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -149,30 +167,31 @@ export default function WorkspaceScreen() {
     menuSubtitle: { fontSize: 12, color: c.textSecondary },
   }));
 
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (message: string) => {
+    setToast(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2400);
+  };
+
   const menuItems = [
     {
       icon: 'gift' as const,
       iconColor: colors.accent,
       iconBg: colors.accent10,
-      title: '賀卡/問候庫',
-      subtitle: '瀏覽與選取節日賀卡樣板',
-      onPress: () => router.push('/greeting-cards'),
+      title: '訂閱賀卡、問候庫',
+      subtitle: '訂閱官方賀卡方案，取得節日問候樣板',
+      onPress: () => showToast('官方賀卡訂閱服務即將開放，敬請期待。'),
     },
     {
-      icon: 'robot' as const,
+      icon: 'user-pen' as const,
       iconColor: colors.info,
       iconBg: colors.info10,
-      title: 'AI 私人聊天室',
-      subtitle: '與 AI 助手自由對話分析',
-      onPress: () => router.push('/ai-chat'),
-    },
-    {
-      icon: 'newspaper' as const,
-      iconColor: colors.sky,
-      iconBg: colors.sky10,
-      title: '新聞追蹤設置',
-      subtitle: '設定關心主題、摘要重點與搜索時間',
-      onPress: () => router.push('/news-settings'),
+      title: '設計私人數位形象',
+      subtitle: '上傳照片、選擇風格，生成專屬 AI 形象',
+      onPress: () => showToast('數位形象生成功能即將開放，敬請期待。'),
     },
     {
       icon: 'gear' as const,
@@ -259,6 +278,12 @@ export default function WorkspaceScreen() {
           ))}
         </View>
       </ScrollView>
+
+      {toast && (
+        <View style={styles.toast} pointerEvents="none">
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      )}
     </Screen>
   );
 }

@@ -1,12 +1,22 @@
 # AGENTS.md — LINE 代理（LINE Agent Platform）
 
-> 最後更新：2026-07-29
+> 最後更新：2026-08-02
 
 ## 產品定位
 
 多租戶 LINE OMO 助手平台。業務員申請自己的 LINE Channel → 產生分身助手 → 客戶加好友即可使用 AI 對話、CRM、群發等功能。所有分身共用統一後台 Agent，透過 **Person Token** 隔離資料。
 
-完整產品架構：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+## 設計與架構文件
+
+所有架構、設計、規格文件統一放在 `.docs/`（不是 `docs/`）：
+
+| 文件 | 內容 |
+|------|------|
+| [`.docs/AGENT_LAYER_ARCHITECTURE.md`](.docs/AGENT_LAYER_ARCHITECTURE.md) | **完整架構說明**（LA / Channel / Agent / Skill / Sub-agent / SeaweedFS / token URL / Admin 規劃）|
+| [`.docs/init.md`](.docs/init.md) | SAM 原 spec（系統定位、MoE 路由、USB 保險箱）|
+| [`.docs/spec/index.md`](.docs/spec/index.md) | 21 個 UI 頁面規格索引 |
+
+**慣例**：新架構文件放 `.docs/`，不要開新的 `docs/` 目錄。`.docs/` 是設計/規格的單一真相。
 
 ## 傳遞方式
 
@@ -19,7 +29,7 @@
 
 ```
 sam/
-├── app/             (原 client/) Expo (React Native Web) — 一般使用者前端
+├── client/          Expo (React Native Web) — 一般使用者前端（目錄名是 client/，不是 app/）
 │   ├── app/         Expo Router routing（Tabs + Stack）
 │   ├── screens/     頁面實作（每個 Tab 一個目錄）
 │   ├── components/  共用元件（Screen, AccountAvatar, USBStatusBadge...）
@@ -31,16 +41,21 @@ sam/
 │   └── assets/      圖片等靜態檔案
 ├── admin/           Vite + React + TypeScript — 平台管理後台（port 7012）
 │   ├── src/
-│   │   ├── api/         API client (JWT auth)
-│   │   ├── components/  Layout, Sidebar, Header, Footer, Modal
-│   │   ├── pages/       Login, Dashboard, Admins, Accounts, Channels, Cards, Agent
+│   │   ├── api/         API client (JWT auth, token 存 admin_token)
+│   │   ├── components/  Layout, Sidebar, Header, Footer, FlowEditor
+│   │   ├── pages/       Login, Dashboard, Accounts, Channels, Cards, AgentCenter,
+│   │   │                AgentDetail, Skills, BusinessDocs, Files, McpTools
 │   │   └── styles/      theme.css (aistock 風格 layout)
+│   ├── e2e/          Playwright 端對端測試（admin-verify.spec.cjs）
 │   └── vite.config.ts   (port 7012)
 ├── server/          Express.js 後端（API + LINE Webhook, port 9091）
+│   ├── src/agent/    Agent layer（pipeline, intent, skills, memory, rate limiter）
+│   ├── src/data/     ArangoDB repos（agent/channel/account/memory/files/businessDoc...）
+│   ├── src/lib/      qdrant, seaweedFs, shareToken, taskforge, metrics, embedder
+│   └── src/routes/   Express routes（admin* 系列 = 管理後台 API）
 ├── service/         Rust (Axum) API Gateway — 統一入口路由到各 Python 服務（port 9092）
 ├── web/             官方網站（預留，尚未實作）
-├── docs/            產品架構文件
-├── .docs/           工作筆記、規格文件
+├── .docs/           架構/設計/規格文件（單一真相）
 │   └── spec/        21 頁 UI 規格
 └── eslint-plugins/  自訂 ESLint 規則
 ```
@@ -91,32 +106,62 @@ curl http://localhost:8529/_db/sam/_api/collection
 | 指令 | 說明 |
 |------|------|
 | `pnpm -w lint:all` | TypeScript + ESLint 檢查（含 admin） |
-| `cd app && npm run start` | Expo dev server（port 7011） |
+| `cd client && npm run start` | Expo dev server（port 7011） |
 | `cd admin && npm run dev` | Admin panel dev server（port 7012） |
 | `cd server && npx tsx src/index.ts` | Express API server（port 9091） |
 | `cd service && cargo run` | Rust API Gateway（port 9092） |
-| `cd app && npx expo export -p web && node scripts/post-build.mjs` | Production build |
-| `cd app && node scripts/proxy.mjs` | PWA server（port 7010） |
+| `cd client && npx expo export -p web && node scripts/post-build.mjs` | Production build（產出 `client/dist/`） |
+| `cd client && node scripts/proxy.mjs` | PWA server（port 7010，serve dist/ + proxy API/Webhook → 9091） |
+
+## 啟動方式
+
+> 基礎服務（ArangoDB:8529、Redis:6379、SeaweedFS、Qdrant）由 host-level infra 負責，確認已在跑即可。Agent layer 額外依賴 `dllm serve`（LLM）與 taskforge:9900。
+
+### 輕啟動（日常開發，tmux 三支）
+
+```bash
+tmux new-session -d -s sam-server -c server "npx tsx src/index.ts"   # Express :9091
+tmux new-session -d -s sam-proxy  -c client "node scripts/proxy.mjs" # PWA :7010（需先 build）
+tmux new-session -d -s sam-admin  -c admin  "npm run dev"            # Admin :7012
+```
+
+注意：`-c` 是 session 啟動目錄，指令內**不要**再包一層 `cd`。proxy 需要 `client/dist/` 存在（先跑過 production build）。
+
+### 啟動驗證
+
+```bash
+curl http://localhost:8529/_api/version          # ArangoDB
+curl http://localhost:9091/api/v1/health         # Express → {"status":"ok"}
+curl -o /dev/null -w "%{http_code}" http://localhost:7010/   # PWA proxy → 200
+curl -o /dev/null -w "%{http_code}" http://localhost:7012/   # Admin → 200
+```
+
+### Admin e2e 測試
+
+```bash
+npx playwright test          # 10 tests（admin/e2e/admin-verify.spec.cjs），需 :7012 + :9091 在跑
+```
 
 ## 目前階段
 
 - ✅ 5 個 Tab 頁面 + 16 個 Detail 頁面 UI 完成
 - ✅ PWA production build + service worker
 - ✅ Express 後端 JWT auth + LINE Webhook
-- ✅ 平台管理後台（Admin Panel）— 6 個管理頁面
+- ✅ **Agent Layer 全 7 phases**（server/src/agent/：intent classifier、skill registry、state store、memory、rate limiter、webhook 已接 pipeline）
+- ✅ **Admin Panel 擴建**（Agent Center、Agent Detail、Business Docs、Files、MCP Tools、Skills 流程編輯器 + 14 條 admin API）
+- ✅ **Admin e2e 測試** 10/10 通過（Playwright）
 - ✅ Rust API Gateway 基礎架構
 - ⬜ 登入頁面整合（Expo App AuthContext）
-- ⬜ AI Agent 整合 + Webhook 業務邏輯
-- ⬜ 多租戶管理後台（串接真實 API）
+- ⬜ 多租戶管理後台串接真實 LINE Channel 資料
+- ⬜ 官方網站 `web/`
 
 ## 管理後台
 
 | 項目 | 說明 |
 |------|------|
 | 網址 | `https://admla.aiconn.ai` |
-| 預設帳號 | 見 `admin/.env` |
+| 預設帳號 | 見 `admin/.env`（目前為 dev auto-login：username 當 channelId，密碼未驗證） |
 | 設定檔 | `admin/.env` |
-- ⬜ 官方網站 `web/`
 
 ## 設計系統
 
