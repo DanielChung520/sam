@@ -170,3 +170,116 @@ npx playwright test          # 10 tests（admin/e2e/admin-verify.spec.cjs），�
 - 主色：翡翠綠 #059669，強調色：琥珀橙 #F97316
 - Admin Panel 採用 aistock 風格（窄 sidebar + header + footer）
 - 完整調色盤：`DESIGN.md`
+
+## 開發原則
+
+### 0. 產品思維（Product Mindset）
+
+這是**產品專案開發**，不是臨時方案。所有程式碼與設計必須符合產品標準：
+
+- **標準化** — 遵循專案既有慣例與風格，不為求快走捷徑
+- **正規化** — 架構設計要完整，不偷工減料
+- **參數化** — 配置一律放環境變數或 DB，嚴禁 hardcode
+- **產品觀** — 開發環境的程式碼品質 = 上線標準，沒有「先求有再求好」
+
+### 1. Product Development Principles
+
+- **避免硬編碼**：配置性內容（URL、端口、secret）一律放 `.env`，嚴禁散落寫死在程式碼
+- **適當解耦**：模組間低耦合，透過 interface/route 通訊
+- **標準化**：遵循現有程式碼風格與專案慣例
+- **可維護性**：程式碼應具有可讀性與可擴展性
+
+### 2. 多租戶隔離原則（憲法級規範）
+
+所有資料操作必須帶 `channelId`（或 `businessOwnerId`）隔離：
+
+- 每個 channel 的資料（contacts/messages/files）獨立存放
+- 前端請求一律帶 `x-channel-id` header（`client/utils/api.ts` 統一處理）
+- 新增任何資料查詢，必須先確認 channel 過濾
+
+### 3. 產出物格式原則（憲法級規範）
+
+Agent 的「產出物」（文件/文章/報告/清單）統一走 HTML 文件流程：
+
+```
+Agent 回傳 { title, content(markdown) } JSON
+  → pipeline 轉 HTML（markdownToHtml）
+  → 存 SeaweedFS（artifactStore）
+  → LINE 回「📄 標題 + 短連結」
+```
+
+- 一般對話回純文字，不包 JSON（見 `agentDelegation.ts` 的 `OUTPUT_FORMAT_RULE`）
+- 嚴禁 agent 產出直接輸出長文給 LINE（應存檔回連結）
+
+### 4. Code & File Header Standards
+
+所有程式碼檔案必須包含表頭註解：
+
+```typescript
+// 檔案說明概要
+// 詳細說明（可選）
+```
+
+> 現有慣例為 `//` 單行註解開頭，新檔案沿用此風格。
+
+### 5. Module Size Guidelines
+
+| 語言 | 單檔上限 | 建議上限 |
+|------|---------|---------|
+| TypeScript | 400 行 | 250 行 |
+| React/TSX | 400 行 | 250 行 |
+
+超過上限的檔案應拆分成多個模組。
+
+### 6. Temporary Files Management
+
+- 所有臨時測試檔統一放 `/tmp/` 或測試後立即刪除
+- 禁止在專案根目錄或 `server/` 留下 `*.tmp.*` 測試檔
+- 測試檔命名 `test-*.tmp.mts`，用完即刪
+
+### 7. Duplicate Prevention Check
+
+新增任何程式碼或檔案前，必須：
+1. 查看 `README.md` 與 `AGENTS.md` 確認現有結構
+2. 搜尋現有功能（`codegraph_explore` 或 grep）
+3. 確認複用可能性（共用 helper：`authJwt.ts`、`lineClient.ts`、`fileStorage.ts`）
+
+### 8. 服務操作規範
+
+| 服務 | 端口 | tmux session | 重啟方式 |
+|------|------|-------------|---------|
+| Express API | 9091 | `sam-server` | `tmux kill-session -t sam-server && tmux new-session -d -s sam-server "cd /home/daniel/github/sam/server && npx tsx src/index.ts"` |
+| PWA proxy | 7010 | `sam-proxy` | `cd client && node scripts/proxy.mjs`（需先 build）|
+| Admin Panel | 7012 | `sam-admin` | `cd admin && npm run dev` |
+| taskforge | 9900 | `taskforge` | `cd ~/github/taskforge && ./taskforge start`（非 git repo，source 改動須手動 rebuild）|
+| dllm | 11400 | systemd | `dllm serve`（VL 模型 lazy-load）|
+
+> ⚠️ 停止/重啟 tmux 服務前，先確認影響範圍。taskforge rebuild 後必須重啟才生效。
+
+### 9. 安全規範（強制）
+
+所有破壞性操作參照 `.sisyphus/safety-rules.md`：
+
+- **先輸出指令，經確認後由使用者手動執行**，AI 不得自行執行
+- ArangoDB 更新一律用 `PATCH` / `UPDATE ... WITH`，禁用 `PUT`
+- 基礎設施（ArangoDB/Qdrant/Redis/SeaweedFS/tmux/sudo）操作須確認
+
+## 文件索引
+
+| 文件 | 內容 |
+|------|------|
+| `AGENTS.md` | 專案總覽、開發原則、操作規範（本文件）|
+| `.sisyphus/safety-rules.md` | **安全規範** — 破壞性操作 SOP、PATCH 原則 |
+| `DESIGN.md` | UI/UX 設計系統（色彩、Typography、元件）|
+| `.docs/AGENT_LAYER_ARCHITECTURE.md` | 完整架構說明 |
+| `.docs/init.md` | SAM 原 spec |
+| `.docs/spec/index.md` | UI 頁面規格索引 |
+| `README.md` | 安裝與啟動說明 |
+
+## 修改歷程
+
+| 日期 | 版本 | 更新者 | 變更內容 |
+|------|------|--------|----------|
+| 2026-08-03 | 1.1.0 | Sisyphus | 新增開發原則（產品思維/多租戶/產出物格式/header/module size/臨時檔/複用檢查/服務操作/安全規範）+ 文件索引 + 修改歷程 |
+| 2026-08-02 | 1.0.0 | Daniel Chung | 初始版本 |
+
