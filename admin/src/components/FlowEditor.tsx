@@ -95,6 +95,24 @@ export function FlowEditor({
   const graphRef = useRef<Graph | null>(null)
   const [nodes, setNodes] = useState<FlowNode[]>(initialNodes)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 導入流程（md/xml/json/yaml 檔案）
+  const handleImportFile = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = async () => {
+      try {
+        const { parseFlowText } = await import('../lib/flowImport')
+        const imported = parseFlowText(String(reader.result ?? ''), file.name)
+        if (!imported.length) throw new Error('匯入結果為空')
+        setNodes(imported)
+        setEditingId(null)
+      } catch (e) {
+        alert('匯入失敗：' + (e instanceof Error ? e.message : String(e)))
+      }
+    }
+    reader.readAsText(file)
+  }
 
   useEffect(() => {
     setNodes(initialNodes)
@@ -381,6 +399,31 @@ graph.draw()
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".md,.xml,.json,.yaml,.yml,text/markdown,text/xml,application/json,application/yaml"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) handleImportFile(f)
+                e.target.value = ''
+              }}
+            />
+            <button
+              className="btn btn-secondary"
+              onClick={() => {}}
+              title="搜尋外部技能（預留：串接技能市集/外部來源）"
+            >
+              🔍 搜尋外部技能
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => fileInputRef.current?.click()}
+              title="導入流程定義（md/xml/json/yaml）"
+            >
+              ⬆ 導入
+            </button>
             <button
               className="btn btn-secondary"
               onClick={handleReset}

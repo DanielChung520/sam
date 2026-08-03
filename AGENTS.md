@@ -270,7 +270,9 @@ Skills 流程編輯器（`admin/src/components/FlowEditor.tsx`）的節點，**�
 
 #### 10.1 設計原則
 
-- **不做流程維護**：流程不是人為在編輯器手工維護的產物，而是**由 AI 與使用者以自然語言討論生成**，或**外部導入 XML / JSON**。
+- **不做流程建置（與 n8n 的關鍵差異）**：n8n 可在編輯器內從零創建流程；我們**簡化為「導入」或「AI 討論」獲得基礎流程**，編輯器不做流程的從零建置。
+- **導入來源**：外部匯入 **Markdown / XML / JSON / YAML** 流程定義，或 **AI 與使用者自然語言討論**生成基礎流程。
+- **節點細部微調**：獲得基礎流程後，每個節點有自己的設置（參考 n8n 節點屬性面板），可在右側屬性欄**細部微調**（改模型、調溫度、改 prompt、改條件等）。
 - **屬性 Schema 驅動**：每個節點 type 定義一組屬性 schema，右側屬性欄依 schema 渲染對應的表單（輸入框 / 下拉 / 代碼編輯器 / 開關）。
 - **節點 config 即屬性**：`FlowNode.config` 的欄位就是節點的屬性值，schema 描述每個欄位的型別與編輯方式。
 
@@ -302,7 +304,12 @@ interface NodePropSchema {
 #### 10.4 生成與導入
 
 - **AI 討論生成**：流程由使用者與 AI **以自然語言討論需求**（例如「幫我做一個收到圖片後辨識名片的流程」），AI 理解後依節點 type 的 schema 產出流程定義（寫入 name-card.json 或 skill_flows collection）。不經人工在編輯器逐節點維護。
-- **外部導入**：支援從 XML（n8n 風格）或 JSON 匯入流程定義，轉換為 `FlowNode[]`。
+- **外部導入**：支援從 **Markdown（流程描述）**、**XML（n8n 風格）**、**JSON**、**YAML** 匯入流程定義，轉換為 `FlowNode[]`。
+  - Markdown：以 `#` 標題分節描述每個節點（`## 節點名（type）` + 屬性清單）
+  - XML：n8n workflow export 格式（`<nodes><node type="..." name="...">`）
+  - JSON：`FlowNode[]` 原生格式（見下方節點結構）
+  - YAML：`nodes:` 列表，每項 `type/label/desc/config`
+- **導入後微調**：匯入的流程轉為 `FlowNode[]` 後，可在右側屬性欄對每個節點細部微調（改模型、調溫度、改 prompt 等）。
 - 流程儲存：`admin/skills/name-card.json`（定義檔）+ server `skill_flows` collection（執行時資料）。
 
 #### 10.5 輸入/輸出規格
@@ -326,6 +333,7 @@ interface NodePropSchema {
 
 | 日期 | 版本 | 更新者 | 變更內容 |
 |------|------|--------|----------|
+| 2026-08-03 | 1.3.0 | Sisyphus | 10.1 明確「不做流程建置」定位（vs n8n）；10.4 導入格式擴充 Markdown/XML/JSON/YAML + 導入後微調流程 |
 | 2026-08-03 | 1.2.0 | Sisyphus | 新增 10. 流程節點屬性規範（憲法級）：節點屬性欄、schema 驅動、AI 生成/外部導入 XML/JSON |
 | 2026-08-03 | 1.1.0 | Sisyphus | 新增開發原則（產品思維/多租戶/產出物格式/header/module size/臨時檔/複用檢查/服務操作/安全規範）+ 文件索引 + 修改歷程 |
 | 2026-08-02 | 1.0.0 | Daniel Chung | 初始版本 |
