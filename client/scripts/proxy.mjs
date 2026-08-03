@@ -93,7 +93,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${PROXY_PORT}`);
 
   // 1) API / Webhook → Express
-  if (url.pathname.startsWith('/api/') || url.pathname === '/webhook') {
+  if (url.pathname.startsWith('/api/') || url.pathname === '/webhook' || url.pathname.startsWith('/webhook/')) {
     return proxyToExpress(req, res);
   }
 

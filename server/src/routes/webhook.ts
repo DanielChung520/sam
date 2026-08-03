@@ -5,7 +5,7 @@ import { getRateLimiter } from '../agent/rateLimiter.js';
 import { logger } from '../agent/logger.js';
 import { chunkForLine } from '../agent/responseFormatter.js';
 import { Metrics } from '../lib/metrics.js';
-import { findChannelByDestination, ensureChannelsCollection } from '../data/channelRepo.js';
+import { findChannelByDestination, findChannelById, ensureChannelsCollection } from '../data/channelRepo.js';
 import type { Channel } from '../data/channelRepo.js';
 import { enqueueExtraction } from '../agent/memoryExtractor.js';
 import { getConversationStore } from '../agent/stateStore.js';
@@ -65,19 +65,43 @@ async function getClientForChannel(destination: string): Promise<{
 
 const router = Router();
 
-router.post('/', async (req: any, res: any) => {
+// 支援兩種路徑：
+//   POST /webhook                    ← 靠 body.destination 查 channel
+//   POST /webhook/ch_{key}            ← 靠 URL 的 channel key（LINE 後台設的獨立 webhook）
+router.post('/:channelPath?', async (req: any, res: any) => {
   await ensureChannelsCollection();
 
   const body: any = req.body ?? {};
   const destination: string | undefined = body.destination;
   const events: WebhookEvent[] = body.events || [];
+  const channelPath: string | undefined = req.params.channelPath;
 
-  if (!destination) {
-    logger.warn('webhook.missing_destination', { eventCount: events.length });
-    return res.status(200).end();
+  // 從 URL 解析 channel：/webhook/ch_{key} 或 /webhook/{key}
+  let urlChannelKey: string | undefined;
+  if (channelPath) {
+    urlChannelKey = channelPath.startsWith('ch_') ? channelPath.slice(3) : channelPath;
   }
 
-  const channelLookup = await getClientForChannel(destination);
+  // 優先用 URL 的 channel key，否則靠 destination
+  let channelLookup: { client: messagingApi.MessagingApiClient | null; blobClient: messagingApi.MessagingApiBlobClient | null; channel: Channel | null };
+  if (urlChannelKey) {
+    const channel = await findChannelById(urlChannelKey);
+    if (channel && channel.enabled) {
+      const client = new messagingApi.MessagingApiClient({ channelAccessToken: channel.accessToken });
+      const blobClient = newBlobClient(channel.accessToken);
+      channelLookup = { client, blobClient, channel };
+    } else {
+      logger.warn('webhook.url_channel_not_found', { urlChannelKey });
+      return res.status(200).end();
+    }
+  } else {
+    if (!destination) {
+      logger.warn('webhook.missing_destination', { eventCount: events.length });
+      return res.status(200).end();
+    }
+    channelLookup = await getClientForChannel(destination);
+  }
+
   const channelSecret = channelLookup.channel?.channelSecret;
 
   if (channelSecret) {
@@ -98,9 +122,9 @@ router.post('/', async (req: any, res: any) => {
 
   const client = channelLookup.client ?? getBootClient();
   const blobClient = channelLookup.blobClient;
-  const channelId = channelLookup.channel?._key ?? destination;
-  const businessOwnerId = channelLookup.channel?.businessOwnerId ?? 'unknown';
   const channel = channelLookup.channel;
+  const channelId = channel?._key ?? urlChannelKey ?? destination ?? 'unknown';
+  const businessOwnerId = channel?.businessOwnerId ?? 'unknown';
   const limiter = getRateLimiter();
 
   // 異步並發佇列：入隊 → 立即回 200 → 背景 worker 處理
