@@ -161,6 +161,17 @@ export async function findAgentById(id: string): Promise<Agent | null> {
   } catch { return null; }
 }
 
+// 找系統固定的 Orchestration agent（category = orchestrator，第一個啟用的）
+export async function findOrchestrationAgent(): Promise<Agent | null> {
+  await ensureAgentsCollection();
+  const db = getDb();
+  const cursor = await db.query(
+    `FOR a IN ${COLLECTION} FILTER a.category == 'orchestrator' AND a.enabled != false SORT a.createdAt ASC LIMIT 1 RETURN a`
+  );
+  const results = (await cursor.all()) as any[];
+  return results.length > 0 ? withDefaults(results[0]) : null;
+}
+
 export async function upsertAgent(input: Omit<Agent, 'webhookPath' | 'createdAt' | 'updatedAt'> & { webhookPath?: string; createdAt?: number; updatedAt?: number }): Promise<Agent> {
   await ensureAgentsCollection();
   const db = getDb();

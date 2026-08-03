@@ -22,6 +22,8 @@ import memoriesRouter from "./routes/memories.js";
 import adminMemoriesRouter from "./routes/adminMemories.js";
 import adminBusinessDocsRouter from "./routes/adminBusinessDocs.js";
 import mcpToolsRouter from "./routes/mcpTools.js";
+import avatarsRouter from "./routes/avatars.js";
+import { ensureSeeds } from "./scripts/ensureSeeds.js";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -57,10 +59,12 @@ app.use('/api/v1', memoriesRouter);
 app.use('/api/v1/admin', adminMemoriesRouter);
 app.use('/api/v1/admin', adminBusinessDocsRouter);
 app.use('/api/v1', mcpToolsRouter);
+app.use('/api/v1', avatarsRouter);
 
 // LINE Webhook
 app.use('/webhook', webhookRouter);
 
 app.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}/`);
+  ensureSeeds().catch((e) => console.error('[seed] failed:', e));
 });

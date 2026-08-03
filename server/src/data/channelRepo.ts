@@ -17,6 +17,7 @@ export interface Channel {
   linkedAgentKey: string;          // 綁定的主 Agent _key（預設入口）
   authorizedAgents?: string[];     // 授權的其他 agent _key 列表（多對多）
   permissions?: string[];          // 額外允許的 skill（undefined = 全部允許）
+  avatar?: string;                 // 頭像：系統圖示檔名或 dataURL
   pushEnabled?: boolean;           // 是否啟用 push 回覆（LINE 需開 push 權限）
   ackEnabled?: boolean;            // 慢任務是否先回「處理中...」
   ackMessage?: string;             // ack 文案
@@ -50,6 +51,18 @@ export async function findChannelById(channelId: string): Promise<Channel | null
   } catch {
     return null;
   }
+}
+
+// 依 LINE Channel ID（channelId 欄位）查詢 — 用於唯一性檢查
+export async function findByLineChannelId(lineChannelId: string, excludeKey?: string): Promise<Channel | null> {
+  const db = getDb();
+  const bind = { lineChannelId };
+  const cursor = await db.query(
+    `FOR c IN ${COLLECTION} FILTER c.channelId == @lineChannelId ${excludeKey ? 'FILTER c._key != @excludeKey' : ''} LIMIT 1 RETURN c`,
+    excludeKey ? { ...bind, excludeKey } : bind,
+  );
+  const results = (await cursor.all()) as Channel[];
+  return results[0] ?? null;
 }
 
 export async function listChannelsByOwner(businessOwnerId: string): Promise<Channel[]> {
