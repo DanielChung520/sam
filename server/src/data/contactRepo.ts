@@ -12,9 +12,15 @@ export interface Contact {
   displayName: string;
   pictureUrl?: string;
   statusMessage?: string;
-  title?: string;                  // 職稱（朋友設置項）
-  nickname?: string;               // 暱稱（朋友設置項）
-  honorific?: string;              // 尊稱（朋友設置項，如「王總」）
+  title?: string;                  // 職稱（相容舊欄位）
+  nickname?: string;               // 暱稱（相容舊欄位）
+  honorific?: string;              // 尊稱（相容舊欄位）
+  salutation?: string;             // 稱謂（單一欄位，供祝賀/名片回覆使用）
+  phone?: string;                  // 電話
+  email?: string;                  // Email
+  company?: string;                // 公司
+  address?: string;                // 地址
+  remark?: string;                 // 備註
   tags: string[];
   score: number;
   lastMessageAt?: number;
@@ -93,6 +99,13 @@ export async function updateContactProfile(
     title?: string;
     nickname?: string;
     honorific?: string;
+    salutation?: string;
+    phone?: string;
+    email?: string;
+    company?: string;
+    address?: string;
+    remark?: string;
+    tags?: string[];
   },
 ): Promise<void> {
   const existing = await findContact(channelId, userId);
@@ -106,7 +119,13 @@ export async function updateContactProfile(
       title: profile.title,
       nickname: profile.nickname,
       honorific: profile.honorific,
-      tags: [],
+      salutation: profile.salutation,
+      phone: profile.phone,
+      email: profile.email,
+      company: profile.company,
+      address: profile.address,
+      remark: profile.remark,
+      tags: profile.tags ?? [],
       score: 0,
       unreadCount: 0,
       isBlocked: false,
@@ -122,5 +141,12 @@ export async function updateContactProfile(
     title: profile.title !== undefined ? profile.title : existing.title,
     nickname: profile.nickname !== undefined ? profile.nickname : existing.nickname,
     honorific: profile.honorific !== undefined ? profile.honorific : existing.honorific,
+    salutation: profile.salutation !== undefined ? profile.salutation : existing.salutation,
+    phone: profile.phone !== undefined ? profile.phone : existing.phone,
+    email: profile.email !== undefined ? profile.email : existing.email,
+    company: profile.company !== undefined ? profile.company : existing.company,
+    address: profile.address !== undefined ? profile.address : existing.address,
+    remark: profile.remark !== undefined ? profile.remark : existing.remark,
+    tags: profile.tags ?? existing.tags,
   });
 }

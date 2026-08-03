@@ -26,10 +26,12 @@ interface ContactDetail {
   title: string;
   nickname: string;
   honorific: string;
-  company: string;
+  salutation: string;
   phone: string;
   email: string;
+  company: string;
   address: string;
+  remark: string;
   score: number;
   tags: string[];
   avatar: string;
@@ -44,9 +46,13 @@ export default function FriendDetailScreen() {
   const [contact, setContact] = useState<ContactDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
-  const [editTitle, setEditTitle] = useState('');
-  const [editNickname, setEditNickname] = useState('');
-  const [editHonorific, setEditHonorific] = useState('');
+  const [editSalutation, setEditSalutation] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editCompany, setEditCompany] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editRemark, setEditRemark] = useState('');
+  const [editTags, setEditTags] = useState('');
   const [saving, setSaving] = useState(false);
   const router = useSafeRouter();
   const insets = useSafeAreaInsets();
@@ -188,6 +194,16 @@ export default function FriendDetailScreen() {
     },
     actionBtnText: { fontSize: 13, fontWeight: '600', color: c.primary },
     actionBtnTextDanger: { fontSize: 13, fontWeight: '600', color: c.danger },
+    editInput: {
+      borderWidth: 1,
+      borderColor: 'rgba(0,0,0,0.12)',
+      borderRadius: 10,
+      padding: 12,
+      fontSize: 14,
+      color: c.text,
+      backgroundColor: c.surface,
+      marginBottom: 14,
+    },
   }));
 
   const fetchDetail = useCallback(async () => {
@@ -211,9 +227,13 @@ export default function FriendDetailScreen() {
 
   const openEdit = () => {
     if (!contact) return;
-    setEditTitle(contact.title ?? '');
-    setEditNickname(contact.nickname ?? '');
-    setEditHonorific(contact.honorific ?? '');
+    setEditSalutation(contact.salutation ?? '');
+    setEditPhone(contact.phone ?? '');
+    setEditEmail(contact.email ?? '');
+    setEditCompany(contact.company ?? '');
+    setEditAddress(contact.address ?? '');
+    setEditRemark(contact.remark ?? '');
+    setEditTags((contact.tags ?? []).join('、'));
     setShowEdit(true);
   };
 
@@ -222,9 +242,13 @@ export default function FriendDetailScreen() {
     setSaving(true);
     try {
       const json = await updateContact(contactId, {
-        title: editTitle.trim(),
-        nickname: editNickname.trim(),
-        honorific: editHonorific.trim(),
+        salutation: editSalutation.trim(),
+        phone: editPhone.trim(),
+        email: editEmail.trim(),
+        company: editCompany.trim(),
+        address: editAddress.trim(),
+        remark: editRemark.trim(),
+        tags: editTags.split(/[、,，\s]+/).filter(Boolean),
       });
       if (json.data) setContact({ ...contact, ...json.data });
       setShowEdit(false);
@@ -262,7 +286,7 @@ export default function FriendDetailScreen() {
           <Image source={{ uri: contact.avatar }} style={styles.profileAvatar} />
           <Text style={styles.profileName}>{contact.name}</Text>
           <Text style={styles.profileTitle}>
-            {[contact.title, contact.honorific, contact.nickname].filter(Boolean).join(' · ') || (contact.company || '')}
+            {[contact.salutation, contact.company].filter(Boolean).join(' · ') || '—'}
           </Text>
           <View style={styles.profileBadges}>
             <ScoreBadge score={contact.score} />
@@ -298,24 +322,40 @@ export default function FriendDetailScreen() {
 
         <View style={styles.infoCard}>
           <Text style={styles.sectionTitle}>聯絡資訊</Text>
+          {contact.company ? (
+            <View style={styles.infoRow}>
+              <View style={styles.infoIconWrap}>
+                <FontAwesome6 name="building" size={14} color={colors.primary} />
+              </View>
+              <Text style={styles.infoText}>{contact.company}</Text>
+            </View>
+          ) : null}
           <View style={styles.infoRow}>
             <View style={styles.infoIconWrap}>
               <FontAwesome6 name="phone" size={14} color={colors.primary} />
             </View>
-            <Text style={styles.infoText}>{contact.phone}</Text>
+            <Text style={styles.infoText}>{contact.phone || '—'}</Text>
           </View>
           <View style={styles.infoRow}>
             <View style={styles.infoIconWrap}>
               <FontAwesome6 name="envelope" size={14} color={colors.primary} />
             </View>
-            <Text style={styles.infoText}>{contact.email}</Text>
+            <Text style={styles.infoText}>{contact.email || '—'}</Text>
           </View>
           <View style={styles.infoRow}>
             <View style={styles.infoIconWrap}>
               <FontAwesome6 name="location-dot" size={14} color={colors.primary} />
             </View>
-            <Text style={styles.infoText}>{contact.address}</Text>
+            <Text style={styles.infoText}>{contact.address || '—'}</Text>
           </View>
+          {contact.remark ? (
+            <View style={styles.infoRow}>
+              <View style={styles.infoIconWrap}>
+                <FontAwesome6 name="note-sticky" size={14} color={colors.accent} />
+              </View>
+              <Text style={styles.infoText}>{contact.remark}</Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.actionsRow}>
@@ -345,37 +385,77 @@ export default function FriendDetailScreen() {
               編輯朋友
             </Text>
             <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 16 }}>
-              {contact.name} · 設定稱呼（用於祝賀/問安回覆）
+              {contact.name} · 編輯聯絡資訊、稱謂、備註與分類
             </Text>
 
-            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>職稱</Text>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>稱謂</Text>
             <TextInput
-              style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 10, padding: 12, fontSize: 14, color: colors.text, backgroundColor: colors.surface, marginBottom: 14 }}
-              value={editTitle}
-              onChangeText={setEditTitle}
-              placeholder="如：總經理、董事長"
+              style={styles.editInput}
+              value={editSalutation}
+              onChangeText={setEditSalutation}
+              placeholder="如：李董、王總（用於祝賀/問安回覆）"
               placeholderTextColor={colors.textTertiary}
             />
 
-            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>尊稱</Text>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>電話</Text>
             <TextInput
-              style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 10, padding: 12, fontSize: 14, color: colors.text, backgroundColor: colors.surface, marginBottom: 14 }}
-              value={editHonorific}
-              onChangeText={setEditHonorific}
-              placeholder="如：王總、張董"
+              style={styles.editInput}
+              value={editPhone}
+              onChangeText={setEditPhone}
+              placeholder="如：0912-345-678"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="phone-pad"
+            />
+
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>Email</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editEmail}
+              onChangeText={setEditEmail}
+              placeholder="如：name@company.com"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>公司</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editCompany}
+              onChangeText={setEditCompany}
+              placeholder="如：大同科技"
               placeholderTextColor={colors.textTertiary}
             />
 
-            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>暱稱</Text>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>地址</Text>
             <TextInput
-              style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 10, padding: 12, fontSize: 14, color: colors.text, backgroundColor: colors.surface, marginBottom: 20 }}
-              value={editNickname}
-              onChangeText={setEditNickname}
-              placeholder="如：小明"
+              style={styles.editInput}
+              value={editAddress}
+              onChangeText={setEditAddress}
+              placeholder="如：台北市信義區"
               placeholderTextColor={colors.textTertiary}
             />
 
-            <View style={{ flexDirection: 'row', gap: 10 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>備註</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editRemark}
+              onChangeText={setEditRemark}
+              placeholder="如：重要客戶、偏好下午聯絡"
+              placeholderTextColor={colors.textTertiary}
+              multiline
+            />
+
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>分類標記</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editTags}
+              onChangeText={setEditTags}
+              placeholder="用頓號分隔，如：VIP、決策者、高意向"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
               <TouchableOpacity
                 onPress={() => setShowEdit(false)}
                 style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', backgroundColor: colors.bgSecondary }}

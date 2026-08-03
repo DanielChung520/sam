@@ -27,10 +27,12 @@ function toDto(c: Contact): Record<string, unknown> {
     title: c.title ?? '',
     nickname: c.nickname ?? '',
     honorific: c.honorific ?? '',
-    company: '',
-    phone: '',
-    email: '',
-    address: '',
+    salutation: c.salutation ?? '',
+    phone: c.phone ?? '',
+    email: c.email ?? '',
+    company: c.company ?? '',
+    address: c.address ?? '',
+    remark: c.remark ?? '',
     score: c.score ?? 0,
     tags: c.tags ?? [],
     avatar: c.pictureUrl ?? '',
@@ -82,12 +84,16 @@ router.get('/:id', async (req: any, res) => {
   }
 });
 
-// PATCH /api/v1/contacts/:id?channelId=xxx - 編輯好友資料（稱呼/暱稱/職稱）
+// PATCH /api/v1/contacts/:id?channelId=xxx - 編輯好友資料（聯絡資訊/稱謂/備註/分類標記）
 router.patch('/:id', async (req: any, res) => {
   const channelId = getChannelId(req);
   if (!channelId) return res.status(400).json({ error: 'channelId required' });
   const userId = req.params.id;
-  const { title, nickname, honorific, displayName, pictureUrl, statusMessage } = req.body ?? {};
+  const {
+    title, nickname, honorific, salutation,
+    phone, email, company, address, remark, tags,
+    displayName, pictureUrl, statusMessage,
+  } = req.body ?? {};
   try {
     const existing = await findContact(channelId, userId);
     if (!existing) return res.status(404).json({ error: 'Contact not found' });
@@ -98,6 +104,13 @@ router.patch('/:id', async (req: any, res) => {
       title,
       nickname,
       honorific,
+      salutation,
+      phone,
+      email,
+      company,
+      address,
+      remark,
+      tags: Array.isArray(tags) ? tags : undefined,
     });
     const updated = await findContact(channelId, userId);
     res.json({ data: updated ? toDto(updated) : null });

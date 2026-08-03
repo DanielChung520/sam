@@ -145,6 +145,13 @@ export async function updateContact(contactId: string, fields: {
   title?: string;
   nickname?: string;
   honorific?: string;
+  salutation?: string;
+  phone?: string;
+  email?: string;
+  company?: string;
+  address?: string;
+  remark?: string;
+  tags?: string[];
   displayName?: string;
 }) {
   return request<{ data: any }>('PATCH', `/contacts/${contactId}`, fields);
