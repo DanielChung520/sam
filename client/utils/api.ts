@@ -141,6 +141,15 @@ export async function getContactDetail(contactId: string) {
   return request<{ data: any }>('GET', `/contacts/${contactId}`);
 }
 
+export async function updateContact(contactId: string, fields: {
+  title?: string;
+  nickname?: string;
+  honorific?: string;
+  displayName?: string;
+}) {
+  return request<{ data: any }>('PATCH', `/contacts/${contactId}`, fields);
+}
+
 // ─── Broadcasts ────────────────────────────────────────
 
 export interface BroadcastItem {

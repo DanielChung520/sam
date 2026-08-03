@@ -4,7 +4,7 @@
 // 資料來源：webhook 事件累積（contactRepo）+ 訊息（messageRepo）
 
 import { Router } from 'express';
-import { listContactsByChannel, findContact, type Contact } from '../data/contactRepo.js';
+import { listContactsByChannel, findContact, updateContactProfile, type Contact } from '../data/contactRepo.js';
 import { listMessages } from '../data/messageRepo.js';
 import { logger } from '../agent/logger.js';
 
@@ -13,6 +13,8 @@ const router = Router();
 function getChannelId(req: any): string | undefined {
   const q = req.query?.channelId;
   if (typeof q === 'string' && q) return q;
+  const k = req.query?.channelKey;
+  if (typeof k === 'string' && k) return k;
   const h = req.headers?.['x-channel-id'];
   if (typeof h === 'string' && h) return h;
   return undefined;
@@ -22,8 +24,10 @@ function toDto(c: Contact): Record<string, unknown> {
   return {
     id: c.userId,                 // 用 LINE userId 當 id（取代 mock 的數字 id）
     name: c.displayName,
+    title: c.title ?? '',
+    nickname: c.nickname ?? '',
+    honorific: c.honorific ?? '',
     company: '',
-    title: '',
     phone: '',
     email: '',
     address: '',
@@ -74,6 +78,31 @@ router.get('/:id', async (req: any, res) => {
     res.json({ data: toDto(contact) });
   } catch (e) {
     logger.error('contacts.get.failed', { error: String(e) });
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// PATCH /api/v1/contacts/:id?channelId=xxx - 編輯好友資料（稱呼/暱稱/職稱）
+router.patch('/:id', async (req: any, res) => {
+  const channelId = getChannelId(req);
+  if (!channelId) return res.status(400).json({ error: 'channelId required' });
+  const userId = req.params.id;
+  const { title, nickname, honorific, displayName, pictureUrl, statusMessage } = req.body ?? {};
+  try {
+    const existing = await findContact(channelId, userId);
+    if (!existing) return res.status(404).json({ error: 'Contact not found' });
+    await updateContactProfile(channelId, userId, {
+      displayName,
+      pictureUrl,
+      statusMessage,
+      title,
+      nickname,
+      honorific,
+    });
+    const updated = await findContact(channelId, userId);
+    res.json({ data: updated ? toDto(updated) : null });
+  } catch (e) {
+    logger.error('contacts.patch.failed', { error: String(e) });
     res.status(500).json({ error: String(e) });
   }
 });

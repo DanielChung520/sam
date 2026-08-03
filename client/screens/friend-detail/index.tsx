@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Screen } from '@/components/Screen';
@@ -16,13 +18,15 @@ import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getContactDetail } from '@/utils/api';
+import { getContactDetail, updateContact } from '@/utils/api';
 
 interface ContactDetail {
   id: number;
   name: string;
-  company: string;
   title: string;
+  nickname: string;
+  honorific: string;
+  company: string;
   phone: string;
   email: string;
   address: string;
@@ -39,6 +43,11 @@ export default function FriendDetailScreen() {
   const { contactId } = useSafeSearchParams<{ contactId: string }>();
   const [contact, setContact] = useState<ContactDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showEdit, setShowEdit] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editNickname, setEditNickname] = useState('');
+  const [editHonorific, setEditHonorific] = useState('');
+  const [saving, setSaving] = useState(false);
   const router = useSafeRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -200,6 +209,32 @@ export default function FriendDetailScreen() {
     }, [fetchDetail])
   );
 
+  const openEdit = () => {
+    if (!contact) return;
+    setEditTitle(contact.title ?? '');
+    setEditNickname(contact.nickname ?? '');
+    setEditHonorific(contact.honorific ?? '');
+    setShowEdit(true);
+  };
+
+  const saveEdit = async () => {
+    if (!contactId) return;
+    setSaving(true);
+    try {
+      const json = await updateContact(contactId, {
+        title: editTitle.trim(),
+        nickname: editNickname.trim(),
+        honorific: editHonorific.trim(),
+      });
+      if (json.data) setContact({ ...contact, ...json.data });
+      setShowEdit(false);
+    } catch (e) {
+      console.error('Failed to update contact:', e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading || !contact) {
     return (
       <Screen backgroundColor={colors.bg}>
@@ -226,7 +261,9 @@ export default function FriendDetailScreen() {
         <View style={styles.profileCard}>
           <Image source={{ uri: contact.avatar }} style={styles.profileAvatar} />
           <Text style={styles.profileName}>{contact.name}</Text>
-          <Text style={styles.profileTitle}>{contact.title} · {contact.company}</Text>
+          <Text style={styles.profileTitle}>
+            {[contact.title, contact.honorific, contact.nickname].filter(Boolean).join(' · ') || (contact.company || '')}
+          </Text>
           <View style={styles.profileBadges}>
             <ScoreBadge score={contact.score} />
             {contact.tags.map((tag) => (
@@ -289,7 +326,7 @@ export default function FriendDetailScreen() {
             <FontAwesome6 name="comment-dots" size={18} color={colors.primary} />
             <Text style={styles.actionBtnText}>對話</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn}>
+          <TouchableOpacity style={styles.actionBtn} onPress={openEdit}>
             <FontAwesome6 name="pen-to-square" size={18} color={colors.accent} />
             <Text style={styles.actionBtnText}>編輯</Text>
           </TouchableOpacity>
@@ -299,6 +336,67 @@ export default function FriendDetailScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* 編輯朋友 Modal */}
+      <Modal visible={showEdit} transparent animationType="slide" onRequestClose={() => setShowEdit(false)}>
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <View style={{ backgroundColor: colors.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: insets.bottom + 24 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
+              編輯朋友
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 16 }}>
+              {contact.name} · 設定稱呼（用於祝賀/問安回覆）
+            </Text>
+
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>職稱</Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 10, padding: 12, fontSize: 14, color: colors.text, backgroundColor: colors.surface, marginBottom: 14 }}
+              value={editTitle}
+              onChangeText={setEditTitle}
+              placeholder="如：總經理、董事長"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>尊稱</Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 10, padding: 12, fontSize: 14, color: colors.text, backgroundColor: colors.surface, marginBottom: 14 }}
+              value={editHonorific}
+              onChangeText={setEditHonorific}
+              placeholder="如：王總、張董"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>暱稱</Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 10, padding: 12, fontSize: 14, color: colors.text, backgroundColor: colors.surface, marginBottom: 20 }}
+              value={editNickname}
+              onChangeText={setEditNickname}
+              placeholder="如：小明"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                onPress={() => setShowEdit(false)}
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', backgroundColor: colors.bgSecondary }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textSecondary }}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={saveEdit}
+                disabled={saving}
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', backgroundColor: colors.primary }}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textOnPrimary }}>儲存</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }

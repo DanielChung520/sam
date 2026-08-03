@@ -83,15 +83,29 @@ export async function markContactUnread(channelId: string, userId: string, isUnr
   await upsertContact({ ...contact, unreadCount });
 }
 
-export async function updateContactProfile(channelId: string, userId: string, profile: { displayName: string; pictureUrl?: string; statusMessage?: string }): Promise<void> {
+export async function updateContactProfile(
+  channelId: string,
+  userId: string,
+  profile: {
+    displayName?: string;
+    pictureUrl?: string;
+    statusMessage?: string;
+    title?: string;
+    nickname?: string;
+    honorific?: string;
+  },
+): Promise<void> {
   const existing = await findContact(channelId, userId);
   if (!existing) {
     await upsertContact({
       channelId,
       userId,
-      displayName: profile.displayName,
+      displayName: profile.displayName ?? '好友',
       pictureUrl: profile.pictureUrl,
       statusMessage: profile.statusMessage,
+      title: profile.title,
+      nickname: profile.nickname,
+      honorific: profile.honorific,
       tags: [],
       score: 0,
       unreadCount: 0,
@@ -102,8 +116,11 @@ export async function updateContactProfile(channelId: string, userId: string, pr
   }
   await upsertContact({
     ...existing,
-    displayName: profile.displayName,
+    displayName: profile.displayName ?? existing.displayName,
     pictureUrl: profile.pictureUrl ?? existing.pictureUrl,
     statusMessage: profile.statusMessage ?? existing.statusMessage,
+    title: profile.title !== undefined ? profile.title : existing.title,
+    nickname: profile.nickname !== undefined ? profile.nickname : existing.nickname,
+    honorific: profile.honorific !== undefined ? profile.honorific : existing.honorific,
   });
 }
