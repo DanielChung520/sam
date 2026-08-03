@@ -5,17 +5,5 @@
 
 export function buildSelfIntro(name?: string): string {
   const displayName = name && name.trim() ? name.trim() : 'AI 助理';
-  return [
-    `您好！我是「${displayName}」，您的 LINE 業務助理 🤝`,
-    '',
-    '我可以幫您處理各種工作，例如：',
-    '• 回答產品 / 服務相關問題',
-    '• 協助分析客戶與需求',
-    '• 整理資料與撰寫內容',
-    '• 安排群發與問候',
-    '',
-    '👉 若您有特定工作指示，請輸入 `/` 查看完整工作項目。',
-    '',
-    '期待為您服務 😊',
-  ].join('\n');
+  return `我是「${displayName}」分身助理，您若有什麼事，交代給我，我會隨時向${displayName}提醒，或轉告！`;
 }
