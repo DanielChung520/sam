@@ -239,6 +239,15 @@ async function handleFollowEvent(
         followedAt: Date.now(),
       });
       logger.info('webhook.follow', { channelId, userId, displayName });
+
+      // 新用戶加好友 → 推自我介紹
+      if (client) {
+        const { buildSelfIntro } = await import('../agent/selfIntro.js');
+        const intro = buildSelfIntro(channel?.name);
+        await sendPushOnly(client, channel, userId, intro).catch((e) =>
+          logger.warn('webhook.follow_intro_failed', { channelId, userId, error: String(e) })
+        );
+      }
     } else {
       const existing = await findContact(channelId, userId);
       if (existing) {

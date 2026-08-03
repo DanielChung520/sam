@@ -20,6 +20,15 @@ export const LOW_CONFIDENCE_THRESHOLD = 0.6;
 const SLASH_COMMAND_RE = /^\/([a-zA-Z]+)\s*([\s\S]*)$/;
 const MENU_SHOW_RE = /^\/\s*$/;
 const MENU_CHOICE_RE = /^\s*([1-9])\s*$/;
+const SELF_INTRO_RE =
+  /^(你是誰|你是誰啊|你是誰呀|你是什麼|你是什麼人|你叫什麼名字|自我介紹|介紹一下(你|自己|你自己)|who are you|what are you|what's your name|introduce yourself|tell me about yourself)[!?？。.!~\s]*$/i;
+
+export function detectSelfIntro(text: string): Intent | null {
+  if (SELF_INTRO_RE.test(text.trim())) {
+    return { type: 'greeting' };
+  }
+  return null;
+}
 
 export function detectSlashCommand(text: string): Intent | null {
   const trimmed = text.trim();
@@ -159,6 +168,16 @@ export async function classifyIntent(
     return {
       intent: menuChoice,
       raw: JSON.stringify(menuChoice),
+      latencyMs: Date.now() - startedAt,
+      source: 'slash-regex',
+    };
+  }
+
+  const selfIntro = detectSelfIntro(text);
+  if (selfIntro) {
+    return {
+      intent: selfIntro,
+      raw: JSON.stringify(selfIntro),
       latencyMs: Date.now() - startedAt,
       source: 'slash-regex',
     };

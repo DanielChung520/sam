@@ -31,7 +31,7 @@ type-specific 欄位規則：
 
 判斷規則：
 1. / 開頭一律為 slash_command
-2. 打招呼詞（你好 / hi / hello / 早安 / 晚安）為 greeting
+2. 打招呼詞（你好 / hi / hello / 早安 / 晚安）為 greeting；詢問 AI 身分（你是誰、自我介紹、你叫什麼名字）也為 greeting
 3. 純情緒表達或感謝為 chitchat
 4. 需要執行某個動作（搜尋、寫、摘要、查）為 request_skill
 5. 引用前一則結果（「那個」、「上面」、「再說」、「continue」）為 follow_up
@@ -44,6 +44,9 @@ Few-shot examples：
 
 [1] 使用者: "你好"
 → {"type": "greeting", "confidence": 0.95, "reasoning": "基本問候語"}
+
+[1b] 使用者: "你是誰？"
+→ {"type": "greeting", "confidence": 0.90, "reasoning": "詢問 AI 身分，屬於打招呼/自我介紹"}
 
 [2] 使用者: "/search 最新 AI 趨勢"
 → {"type": "slash_command", "command": "search", "arg": "最新 AI 趨勢", "confidence": 0.99, "reasoning": "明確斜線指令"}
