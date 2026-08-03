@@ -1,27 +1,428 @@
 import { Router } from 'express';
+import { messagingApi, validateSignature, webhook } from '@line/bot-sdk';
+import { getPolarisPipeline } from '../agent/pipeline.js';
+import { getRateLimiter } from '../agent/rateLimiter.js';
+import { logger } from '../agent/logger.js';
+import { chunkForLine } from '../agent/responseFormatter.js';
+import { Metrics } from '../lib/metrics.js';
+import { findChannelByDestination, ensureChannelsCollection } from '../data/channelRepo.js';
+import type { Channel } from '../data/channelRepo.js';
+import { enqueueExtraction } from '../agent/memoryExtractor.js';
+import { getConversationStore } from '../agent/stateStore.js';
+import { downloadAndStoreMedia, type MediaPayload } from '../agent/mediaService.js';
+import { getAgentRegistry } from '../agent/agentRegistry.js';
+import { randomUUID } from 'node:crypto';
+
+const L1_WINDOW_SIZE = 50;
+
+type WebhookEvent = webhook.Event;
+type ChannelCacheEntry = {
+  channel: Channel;
+  client: messagingApi.MessagingApiClient;
+  blobClient: messagingApi.MessagingApiBlobClient;
+  cachedAt: number;
+};
+const CHANNEL_CACHE_TTL_MS = 60_000;
+const channelCache = new Map<string, ChannelCacheEntry>();
+
+let bootChannelCache: messagingApi.MessagingApiClient | null = null;
+const BOOT_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
+
+function getBootClient(): messagingApi.MessagingApiClient | null {
+  if (!BOOT_ACCESS_TOKEN) return null;
+  if (!bootChannelCache) {
+    bootChannelCache = new messagingApi.MessagingApiClient({
+      channelAccessToken: BOOT_ACCESS_TOKEN,
+    });
+  }
+  return bootChannelCache;
+}
+
+function newBlobClient(accessToken: string): messagingApi.MessagingApiBlobClient {
+  return new messagingApi.MessagingApiBlobClient({ channelAccessToken: accessToken });
+}
+
+async function getClientForChannel(destination: string): Promise<{
+  client: messagingApi.MessagingApiClient | null;
+  blobClient: messagingApi.MessagingApiBlobClient | null;
+  channel: Channel | null;
+}> {
+  const cached = channelCache.get(destination);
+  if (cached && Date.now() - cached.cachedAt < CHANNEL_CACHE_TTL_MS) {
+    return { client: cached.client, blobClient: cached.blobClient, channel: cached.channel };
+  }
+  const channel = await findChannelByDestination(destination);
+  if (!channel || !channel.enabled) {
+    return { client: null, blobClient: null, channel: null };
+  }
+  const client = new messagingApi.MessagingApiClient({
+    channelAccessToken: channel.accessToken,
+  });
+  const blobClient = newBlobClient(channel.accessToken);
+  channelCache.set(destination, { channel, client, blobClient, cachedAt: Date.now() });
+  return { client, blobClient, channel };
+}
 
 const router = Router();
 
-router.post('/', (req: any, res: any) => {
-  const events = req.body?.events || [];
+router.post('/', async (req: any, res: any) => {
+  await ensureChannelsCollection();
 
-  for (const event of events) {
-    console.log('LINE event:', event.type, event.source?.userId);
+  const body: any = req.body ?? {};
+  const destination: string | undefined = body.destination;
+  const events: WebhookEvent[] = body.events || [];
 
-    if (event.type === 'message') {
-      // TODO: handle message events
-    } else if (event.type === 'follow') {
-      // New friend added
-    } else if (event.type === 'unfollow') {
-      // Friend removed
+  if (!destination) {
+    logger.warn('webhook.missing_destination', { eventCount: events.length });
+    return res.status(200).end();
+  }
+
+  const channelLookup = await getClientForChannel(destination);
+  const channelSecret = channelLookup.channel?.channelSecret;
+
+  if (channelSecret) {
+    const signature = req.header('x-line-signature') || '';
+    const rawBody = (req as any).rawBody;
+    if (rawBody) {
+      const valid = validateSignature(rawBody, channelSecret, signature);
+      if (!valid) {
+        logger.warn('webhook.invalid_signature', { destination });
+        return res.status(401).json({ error: 'invalid signature' });
+      }
     }
+  } else {
+    logger.warn('webhook.channel_not_registered', { destination });
   }
 
   res.status(200).end();
+
+  const client = channelLookup.client ?? getBootClient();
+  const blobClient = channelLookup.blobClient;
+  const channelId = channelLookup.channel?._key ?? destination;
+  const businessOwnerId = channelLookup.channel?.businessOwnerId ?? 'unknown';
+  const channel = channelLookup.channel;
+  const limiter = getRateLimiter();
+
+  // 異步並發佇列：入隊 → 立即回 200 → 背景 worker 處理
+  const registry = getAgentRegistry();
+  let instance;
+  try {
+    instance = await registry.get(channelId);
+  } catch {
+    return res.status(200).end();
+  }
+  const pool = instance.pool;
+  if (!pool.isHandlerSet) {
+    pool.setHandler(processQueueItem);
+  }
+
+  for (const event of events) {
+    const userId = (event as any).source?.userId;
+    if (event.type !== 'message' || !userId) continue;
+    const messageEvent = event as any;
+    const msgType: string = messageEvent.message?.type ?? '';
+    const sourceType: string = (event as any).source?.type ?? 'user';
+
+    if (!shouldRespondByMessage(sourceType, msgType, messageEvent.message, businessOwnerId)) {
+      logger.debug('webhook.skipped_group_no_mention', { userId, channelId, sourceType });
+      continue;
+    }
+
+    Metrics.incMessage();
+
+    const rate = await limiter.check(userId);
+    if (!rate.allowed) {
+      logger.info('webhook.rate_limited', { userId, channelId, retryAfterSec: rate.retryAfterSec });
+      if (client && replyTokenOf(messageEvent)) {
+        await safeReply(client, replyTokenOf(messageEvent)!, '訊息頻率過高，請稍候再試 🙏');
+      }
+      continue;
+    }
+
+    const item = {
+      id: randomUUID(),
+      channelId,
+      userId,
+      enqueuedAt: Date.now(),
+      attempts: 0,
+      payload: {
+        event: messageEvent,
+        sourceType,
+        msgType,
+        client,
+        blobClient,
+        channel,
+        channelId,
+        userId,
+        businessOwnerId,
+        queuePriority: channel?.queuePriority ?? 0,
+      },
+    };
+    await pool.submit(channelId, item, channel?.concurrencyLimit ?? 2);
+  }
 });
+
+function replyTokenOf(event: any): string | undefined {
+  return event?.replyToken;
+}
+
+// 背景 worker：處理一條入隊訊息（text 或 media），回覆用 reply 或 push
+async function processQueueItem(item: import('../agent/asyncQueue.js').QueueItem): Promise<void> {
+  const p = item.payload as any;
+  const { event, msgType, client, blobClient, channel, channelId, userId, businessOwnerId } = p;
+  const pipeline = getPolarisPipeline();
+  const replyToken = replyTokenOf(event);
+
+  try {
+    await triggerSlidingWindowExtraction(userId, channelId);
+
+    if (msgType !== 'text') {
+      await handleMediaMessage(client, blobClient, pipeline, userId, channelId, event, p.sourceType, businessOwnerId);
+      return;
+    }
+
+    const text: string = event.message?.text ?? '';
+
+    // ack：慢任務（taskforge 型 slash 指令）先回「處理中」，完成後再 push 結果
+    const isSlowTask = isTaskforgeSlash(text);
+    if (isSlowTask && channel?.ackEnabled !== false && client && replyToken) {
+      const ackMsg = channel.ackMessage?.trim() || '收到，處理中...';
+      await safeReply(client, replyToken, ackMsg);
+    }
+
+    const result = await pipeline.handleMessage({ userId, channelId, text, replyToken });
+    logger.info('webhook.handled', {
+      channelId,
+      businessOwnerId,
+      userId,
+      conversationId: result.conversationId,
+      intentType: result.intent?.type,
+      state: result.state,
+    });
+
+    // 慢任務已 ack 過 → 用 push 送結果（replyToken 已用掉/過期）
+    if (isSlowTask) {
+      await sendPushOnly(client, channel, userId, result.text);
+    } else {
+      await sendReplyOrPush(client, channel, userId, replyToken, result.text);
+    }
+  } catch (err) {
+    logger.error('webhook.handler_failed', { channelId, userId, error: String(err) });
+    Metrics.pushError('webhook.handler_failed', String(err).slice(0, 200), { channelId, userId });
+    await sendReplyOrPush(client, channel, userId, replyToken, '系統發生錯誤，請稍後再試 🙏');
+  }
+}
+
+// 判定是否為 taskforge 型慢任務（會阻塞數秒到數分鐘）
+function isTaskforgeSlash(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (!t.startsWith('/')) return false;
+  const head = t.split(/\s+/)[0].slice(1);
+  return head === 'search' || head === 'analysis' || head === 'analyze' || head === 'write'
+    || head === 'web-search' || head === 'sirius' || head === 'deneb';
+}
+
+// 只用 push 送訊息（ack 已用 replyToken，結果走 push）
+async function sendPushOnly(
+  client: messagingApi.MessagingApiClient | null,
+  channel: Channel | null,
+  userId: string,
+  text: string,
+): Promise<void> {
+  if (!client || !userId) {
+    logger.debug('webhook.no_push_client', { userId, text });
+    return;
+  }
+  if (channel?.pushEnabled === false) {
+    logger.debug('webhook.push_disabled', { channelId: channel?._key, userId });
+    return;
+  }
+  const chunks = chunkForLine(text);
+  const messages = chunks.map((c) => ({ type: 'text' as const, text: c }));
+  try {
+    await client.pushMessage({ to: userId, messages });
+    logger.debug('webhook.pushed_result', { channelId: channel?._key ?? 'unknown', userId });
+  } catch (err) {
+    logger.error('webhook.push_failed', { channelId: channel?._key ?? 'unknown', userId, error: String(err) });
+  }
+}
+
+// 回覆：3 秒內用 replyToken（免費），超過則用 push（需 channel 開 push 權限）
+async function sendReplyOrPush(
+  client: messagingApi.MessagingApiClient | null,
+  channel: Channel | null,
+  userId: string,
+  replyToken: string | undefined,
+  text: string,
+): Promise<void> {
+  const chunks = chunkForLine(text);
+  const messages = chunks.map((c) => ({ type: 'text' as const, text: c }));
+
+  if (client && replyToken) {
+    try {
+      await client.replyMessage({ replyToken, messages });
+      return;
+    } catch (err) {
+      logger.info('webhook.reply_failed_fallback_push', { userId, error: String(err) });
+    }
+  }
+
+  // reply 失敗或無 replyToken → push（LINE push 需授權 + channel pushEnabled）
+  if (client && channel?.pushEnabled !== false && userId) {
+    try {
+      await client.pushMessage({ to: userId, messages });
+      logger.debug('webhook.pushed', { channelId: channel?._key ?? 'unknown', userId });
+    } catch (err) {
+      logger.error('webhook.push_failed', { channelId: channel?._key ?? 'unknown', userId, error: String(err) });
+    }
+  } else {
+    logger.debug('webhook.no_reply_client', { userId, text });
+  }
+}
+
+async function handleMediaMessage(
+  client: messagingApi.MessagingApiClient | null,
+  blobClient: messagingApi.MessagingApiBlobClient | null,
+  pipeline: ReturnType<typeof getPolarisPipeline>,
+  userId: string,
+  channelId: string,
+  messageEvent: any,
+  sourceType: string,
+  businessOwnerId: string,
+): Promise<void> {
+  const msg = messageEvent.message ?? {};
+  const mediaType = (msg.type as string) === 'image' ? 'image'
+    : (msg.type as string) === 'video' ? 'video'
+    : (msg.type as string) === 'audio' ? 'audio'
+    : (msg.type as string) === 'file' ? 'file'
+    : (msg.type as string) === 'sticker' ? 'sticker'
+    : null;
+
+  if (!mediaType) {
+    logger.debug('webhook.unsupported_message_type', { userId, channelId, type: msg.type });
+    return;
+  }
+
+  const payload: MediaPayload = {
+    mediaType,
+    messageId: msg.id,
+    fileName: msg.fileName,
+    fileSize: msg.fileSize,
+    durationMs: msg.duration,
+  };
+
+  let media;
+  try {
+    media = blobClient
+      ? await downloadAndStoreMedia(blobClient, channelId, userId, payload)
+      : undefined;
+  } catch (err) {
+    logger.error('webhook.media_download_failed', { userId, channelId, mediaType, error: String(err) });
+    const replyToken = replyTokenOf(messageEvent);
+    if (client && replyToken) {
+      await safeReply(client, replyToken, '收到您的多媒體訊息，但暫時無法下載處理 🙏');
+    }
+    return;
+  }
+
+  const replyToken = replyTokenOf(messageEvent);
+  try {
+    const result = await pipeline.handleMessage({
+      userId,
+      channelId,
+      text: '',
+      replyToken,
+      media: {
+        mediaType,
+        messageId: msg.id,
+        fileName: msg.fileName,
+        fileSize: msg.fileSize,
+        durationMs: msg.duration,
+        storageKey: media?.storageKey,
+      },
+    });
+    logger.info('webhook.media_handled', {
+      channelId,
+      businessOwnerId,
+      userId,
+      mediaType,
+      storageKey: media?.storageKey,
+      state: result.state,
+    });
+    if (client && replyToken) {
+      const chunks = chunkForLine(result.text);
+      const messages = chunks.map((c) => ({ type: 'text' as const, text: c }));
+      await client.replyMessage({ replyToken, messages });
+    }
+  } catch (err) {
+    logger.error('webhook.media_handler_failed', { channelId, userId, mediaType, error: String(err) });
+    Metrics.pushError('webhook.media_handler_failed', String(err).slice(0, 200), { channelId, userId });
+    if (client && replyToken) {
+      await safeReply(client, replyToken, '收到您的多媒體訊息，處理中遇到問題 🙏');
+    }
+  }
+}
+
+function shouldRespondByMessage(
+  sourceType: string,
+  msgType: string,
+  message: any,
+  _businessOwnerId: string,
+): boolean {
+  if (sourceType === 'user') return true;
+  if (sourceType === 'group' || sourceType === 'room') {
+    if (msgType === 'text') {
+      const text = message?.text ?? '';
+      const mentionPatterns = [/@分身\b/, /@bot\b/i, /@Polaris\b/i, /@Sirius\b/i, /@Vega\b/i, /@Altair\b/i, /@Deneb\b/i];
+      return mentionPatterns.some((re) => re.test(text));
+    }
+    return false;
+  }
+  return false;
+}
+
+async function safeReply(
+  client: messagingApi.MessagingApiClient,
+  replyToken: string,
+  text: string,
+): Promise<void> {
+  try {
+    const chunks = chunkForLine(text);
+    const messages = chunks.map((c) => ({ type: 'text' as const, text: c }));
+    await client.replyMessage({ replyToken, messages });
+  } catch (err) {
+    logger.error('webhook.safe_reply_failed', { error: String(err) });
+  }
+}
 
 router.get('/health', (_req: any, res: any) => {
   res.json({ ok: true });
 });
+
+async function triggerSlidingWindowExtraction(userId: string, channelId: string): Promise<void> {
+  try {
+    const store = getConversationStore();
+    const convs = await store.listByUser(userId, channelId);
+    if (convs.length === 0) return;
+    const conv = convs.sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    const history = (conv.history ?? []) as Array<{ role: string; content: string; at?: number }>;
+    if (history.length < L1_WINDOW_SIZE) return;
+    const overflowCount = history.length - L1_WINDOW_SIZE + 4;
+    const overflow = history.slice(0, overflowCount);
+    if (overflow.length === 0) return;
+    enqueueExtraction({
+      customerId: userId,
+      channelId,
+      messages: overflow.map((m) => ({
+        role: (m.role === 'agent' ? 'agent' : 'user') as 'user' | 'agent',
+        content: m.content ?? '',
+        at: m.at ?? Date.now(),
+      })),
+    });
+    logger.debug('webhook.l1_sliding_window.queued', { userId, channelId, overflow: overflow.length });
+  } catch (e) {
+    logger.warn('webhook.l1_sliding_window.failed', { error: String(e) });
+  }
+}
 
 export default router;

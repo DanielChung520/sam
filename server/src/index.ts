@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from "express";
 import cors from "cors";
 import contactsRouter from "./routes/contacts.js";
@@ -7,6 +8,20 @@ import workspaceRouter from "./routes/workspace.js";
 import webhookRouter from "./routes/webhook.js";
 import authRouter from "./routes/auth.js";
 import adminSkillsRouter from "./routes/adminSkills.js";
+import articleReaderRouter from "./routes/articleReader.js";
+import filesRouter from "./routes/files.js";
+import agentSkillsRouter from "./routes/agentSkills.js";
+import adminMetricsRouter from "./routes/adminMetrics.js";
+import adminChannelsRouter from "./routes/adminChannels.js";
+import adminSubAgentsRouter from "./routes/adminSubAgents.js";
+import adminFilesRouter from "./routes/adminFiles.js";
+import adminAgentsRouter from "./routes/adminAgents.js";
+import adminAgentCenterRouter from "./routes/adminAgentCenter.js";
+import adminAccountsRouter from "./routes/adminAccounts.js";
+import memoriesRouter from "./routes/memories.js";
+import adminMemoriesRouter from "./routes/adminMemories.js";
+import adminBusinessDocsRouter from "./routes/adminBusinessDocs.js";
+import mcpToolsRouter from "./routes/mcpTools.js";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -28,6 +43,20 @@ app.use('/api/v1/broadcasts', broadcastsRouter);
 app.use('/api/v1', workspaceRouter);
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/admin/skills', adminSkillsRouter);
+app.use('/api/v1/article-reader', articleReaderRouter);
+app.use('/api/v1/files', filesRouter);
+app.use('/api/v1/agent', agentSkillsRouter);
+app.use('/api/v1/admin', adminMetricsRouter);
+app.use('/api/v1/admin', adminChannelsRouter);
+app.use('/api/v1/admin', adminSubAgentsRouter);
+app.use('/api/v1/admin', adminFilesRouter);
+app.use('/api/v1/admin', adminAgentsRouter);
+app.use('/api/v1/admin', adminAgentCenterRouter);
+app.use('/api/v1/admin', adminAccountsRouter);
+app.use('/api/v1', memoriesRouter);
+app.use('/api/v1/admin', adminMemoriesRouter);
+app.use('/api/v1/admin', adminBusinessDocsRouter);
+app.use('/api/v1', mcpToolsRouter);
 
 // LINE Webhook
 app.use('/webhook', webhookRouter);
