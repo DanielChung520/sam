@@ -6,18 +6,28 @@ const DLLM_API_BASE = process.env.LLM_API_BASE ?? 'http://localhost:11400/v1';
 const DLLM_API_KEY = process.env.LLM_API_KEY ?? '';
 const LLM_MODEL = process.env.LLM_MODEL ?? 'Qwen3-8B-AWQ';
 
-export async function generateCardThankYou(name: string, title: string): Promise<string> {
+// 模型設定：可從 skill flow config 覆蓋（雲端模型等）
+export interface CardModelConfig {
+  apiBase?: string;
+  apiKey?: string;
+  model?: string;
+}
+
+export async function generateCardThankYou(name: string, title: string, mc?: CardModelConfig): Promise<string> {
+  const apiBase = mc?.apiBase ?? DLLM_API_BASE;
+  const apiKey = mc?.apiKey ?? DLLM_API_KEY;
+  const model = mc?.model ?? LLM_MODEL;
   const prompt = `客戶提供了名片：${name || '未知'}${title ? `，職稱 ${title}` : ''}。
 請以簡短（1 句）真摯的繁體中文感謝對方，提到對方姓名，表達樂於保持聯繫，不要自我介紹。`;
 
-  const res = await fetch(`${DLLM_API_BASE}/chat/completions`, {
+  const res = await fetch(`${apiBase}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(DLLM_API_KEY ? { Authorization: `Bearer ${DLLM_API_KEY}` } : {}),
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     },
     body: JSON.stringify({
-      model: LLM_MODEL,
+      model,
       messages: [
         { role: 'system', content: '你是親切溫暖的業務助理，回覆簡短真摯。' },
         { role: 'user', content: prompt },

@@ -10,6 +10,13 @@ import { findContact } from '../data/contactRepo.js';
 import { getClientByChannelKey } from '../lib/lineClient.js';
 import { logger } from './logger.js';
 
+// 模型設定：可從 skill flow config 覆蓋（雲端模型等）
+export interface GreetingModelConfig {
+  apiBase?: string;
+  apiKey?: string;
+  model?: string;
+}
+
 const DLLM_API_BASE = process.env.LLM_API_BASE ?? 'http://localhost:11400/v1';
 const DLLM_API_KEY = process.env.LLM_API_KEY ?? '';
 const LLM_MODEL = process.env.LLM_MODEL ?? 'Qwen3-8B-AWQ';
@@ -31,15 +38,18 @@ export function resolveSalutation(contact: {
 }
 
 // LLM 生成文雅祝福（含稱呼）
-async function generateReply(prompt: string): Promise<string> {
-  const res = await fetch(`${DLLM_API_BASE}/chat/completions`, {
+async function generateReply(prompt: string, mc?: GreetingModelConfig): Promise<string> {
+  const apiBase = mc?.apiBase ?? DLLM_API_BASE;
+  const apiKey = mc?.apiKey ?? DLLM_API_KEY;
+  const model = mc?.model ?? LLM_MODEL;
+  const res = await fetch(`${apiBase}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(DLLM_API_KEY ? { Authorization: `Bearer ${DLLM_API_KEY}` } : {}),
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     },
     body: JSON.stringify({
-      model: LLM_MODEL,
+      model,
       messages: [
         {
           role: 'system',
@@ -89,8 +99,10 @@ export async function generatePersonalizedGreeting(input: {
   summary?: string;
   channelId: string;
   userId: string;
+  modelConfig?: GreetingModelConfig;
 }): Promise<{ ok: boolean; reply?: string; reason?: string }> {
   const { type, festival, greeting_period: period, greeting_content: content, summary } = input;
+  const mc = input.modelConfig;
 
   // 1. 找主身的朋友（稱呼 + 性別 + 年齡段）
   let salutation = '親愛的朋友';
@@ -127,7 +139,7 @@ export async function generatePersonalizedGreeting(input: {
   let lastError = '';
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const reply = await generateReply(prompt);
+      const reply = await generateReply(prompt, mc);
       if (validateReply(reply, salutation)) {
         return { ok: true, reply };
       }

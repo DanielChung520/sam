@@ -38,15 +38,25 @@ const OCR_PROMPT = `請解析這張圖片，嚴格輸出 JSON（不要 markdown 
 6. 每個項目都有對應欄位就填，沒有就留空字串
 7. 全部用繁體中文`;
 
-async function recognizeImage(imageB64: string): Promise<string> {
-  const res = await fetch(`${DLLM_API_BASE}/chat/completions`, {
+// 模型設定：可從 skill flow config 覆蓋（雲端模型等）
+export interface VisionModelConfig {
+  apiBase?: string;
+  apiKey?: string;
+  model?: string;
+}
+
+async function recognizeImage(imageB64: string, mc?: VisionModelConfig): Promise<string> {
+  const apiBase = mc?.apiBase ?? DLLM_API_BASE;
+  const apiKey = mc?.apiKey ?? DLLM_API_KEY;
+  const model = mc?.model ?? VL_MODEL;
+  const res = await fetch(`${apiBase}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(DLLM_API_KEY ? { Authorization: `Bearer ${DLLM_API_KEY}` } : {}),
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     },
     body: JSON.stringify({
-      model: VL_MODEL,
+      model,
       messages: [
         {
           role: 'user',
@@ -63,7 +73,7 @@ async function recognizeImage(imageB64: string): Promise<string> {
     signal: AbortSignal.timeout(120_000),
   });
   if (!res.ok) {
-    throw new Error(`dllm VL HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    throw new Error(`VL HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
   }
   const j = (await res.json()) as any;
   return j?.choices?.[0]?.message?.content ?? '';
@@ -121,10 +131,19 @@ const handler = async (args: Record<string, unknown>): Promise<{ ok: boolean; ou
   }
 
   try {
+    // 讀取 flow config（節點屬性，三層：flow > defaults > env）
+    const { loadFlowConfig } = await import('../../skillConfig.js');
+    const flowConfig = await loadFlowConfig('ocr');
+    const visionMc: VisionModelConfig = {
+      apiBase: (flowConfig.apiBase as string) ?? undefined,
+      apiKey: (flowConfig.apiKey as string) ?? undefined,
+      model: (flowConfig.model as string) ?? undefined,
+    };
+
     const storage = getFileStorage();
     const { body } = await storage.get(media.storageKey);
     const imageB64 = body.toString('base64');
-    const text = await recognizeImage(imageB64);
+    const text = await recognizeImage(imageB64, visionMc);
     if (!text.trim()) throw new Error('empty recognition result');
 
     // 解析 JSON（容錯：剝離 markdown 包裹）
@@ -151,6 +170,7 @@ const handler = async (args: Record<string, unknown>): Promise<{ ok: boolean; ou
           summary: parsed.summary,
           channelId,
           userId,
+          modelConfig: visionMc,
         });
         if (result.ok && result.reply) {
           return { ok: true, output: `${result.reply}\n\n${base}` };
