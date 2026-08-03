@@ -116,3 +116,9 @@ target/
 
 # OpenCode
 .omo/
+
+# Dev artifacts
+*.png
+!client/assets/
+!admin/public/
+test-results/
