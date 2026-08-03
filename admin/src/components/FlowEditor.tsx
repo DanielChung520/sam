@@ -636,6 +636,8 @@ function EditPanel({
   const [desc, setDesc] = useState(node.desc)
   const [enabled, setEnabled] = useState(node.enabled)
   const [config, setConfig] = useState<Record<string, any>>(node.config ?? {})
+  // 可維護狀態：false = 唯讀檢視；true = 可編輯表單
+  const [maintainable, setMaintainable] = useState(false)
 
   const nodeTypeDef = NODE_TYPES[node.type] ?? NODE_TYPES.dummy
 
@@ -645,6 +647,7 @@ function EditPanel({
     setDesc(node.desc)
     setEnabled(node.enabled)
     setConfig(node.config ?? {})
+    setMaintainable(false)
   }, [node.id, node.label, node.desc, node.enabled])
 
   const setProp = (name: string, value: unknown) => {
@@ -755,68 +758,122 @@ function EditPanel({
         }}>
           {nodeTypeDef.icon} {nodeTypeDef.label}
         </span>
-        <span>Edit</span>
+        <button
+          onClick={() => setMaintainable((v) => !v)}
+          title={maintainable ? '切換回唯讀檢視' : '進入可維護狀態（編輯屬性）'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            padding: '4px 10px',
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: 'pointer',
+            background: maintainable ? 'var(--bg-hover, #eef2f7)' : 'transparent',
+            color: maintainable ? 'var(--text)' : 'var(--text-secondary)',
+          }}
+        >
+          <EditIcon sx={{ fontSize: 13 }} />
+          {maintainable ? '維護中（可編輯）' : 'Edit'}
+        </button>
       </div>
       <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
-        <div className="form-group">
-          <label className="form-label">Title</label>
-          <input
-            className="form-input"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-          />
-        </div>
-
-        <div className="form-group">
-          <label className="form-label">Description</label>
-          <textarea
-            className="form-input"
-            rows={4}
-            value={desc}
-            onChange={(e) => setDesc(e.target.value)}
-          />
-        </div>
-
-        <div className="form-group">
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontSize: 13,
-              cursor: 'pointer',
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={enabled}
-              onChange={(e) => setEnabled(e.target.checked)}
-            />
-            Enabled
-          </label>
-        </div>
-
-        {/* 節點屬性表單（依 propsSchema 渲染） */}
-        {node.propsSchema && node.propsSchema.length > 0 && (
-          <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-              屬性
+        {!maintainable ? (
+          /* 唯讀檢視：顯示節點屬性值（非維護狀態） */
+          <>
+            <div className="form-group">
+              <label className="form-label">Title</label>
+              <div style={{ fontSize: 14, color: 'var(--text)', fontWeight: 600 }}>{label}</div>
             </div>
-            {node.propsSchema.map((p) => (
-              <div key={p.name} className="form-group">
-                <label className="form-label">
-                  {p.label}
-                  {p.required && <span style={{ color: '#ef4444', marginLeft: 2 }}>*</span>}
-                </label>
-                {renderProp(p)}
-                {p.desc && (
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                    {p.desc}
-                  </div>
-                )}
+            <div className="form-group">
+              <label className="form-label">Description</label>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>{desc || '—'}</div>
+            </div>
+            {node.propsSchema && node.propsSchema.length > 0 && (
+              <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                  屬性
+                </div>
+                {node.propsSchema.map((p) => {
+                  const v = config[p.name] ?? p.default ?? ''
+                  return (
+                    <div key={p.name} style={{ display: 'flex', gap: 8, marginBottom: 6, fontSize: 13 }}>
+                      <span style={{ color: 'var(--text-secondary)', fontWeight: 500, minWidth: 80 }}>{p.label}</span>
+                      <span style={{ color: 'var(--text)' }}>
+                        {p.type === 'boolean' ? (v ? '✅ 是' : '❌ 否') : p.type === 'select' ? (p.options?.find((o) => o.value === v)?.label ?? v) : String(v ?? '—')}
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
-            ))}
-          </div>
+            )}
+          </>
+        ) : (
+          /* 可維護狀態：可編輯表單 */
+          <>
+            <div className="form-group">
+              <label className="form-label">Title</label>
+              <input
+                className="form-input"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Description</label>
+              <textarea
+                className="form-input"
+                rows={4}
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(e) => setEnabled(e.target.checked)}
+                />
+                Enabled
+              </label>
+            </div>
+
+            {/* 節點屬性表單（依 propsSchema 渲染） */}
+            {node.propsSchema && node.propsSchema.length > 0 && (
+              <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                  屬性
+                </div>
+                {node.propsSchema.map((p) => (
+                  <div key={p.name} className="form-group">
+                    <label className="form-label">
+                      {p.label}
+                      {p.required && <span style={{ color: '#ef4444', marginLeft: 2 }}>*</span>}
+                    </label>
+                    {renderProp(p)}
+                    {p.desc && (
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                        {p.desc}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         {/* 輸入資料（吃什麼 JSON） */}
