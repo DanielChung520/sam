@@ -67,6 +67,41 @@ async function recognizeImage(imageB64: string): Promise<string> {
   return j?.choices?.[0]?.message?.content ?? '';
 }
 
+// 生成個人化祝賀/問安回覆（LLM 文字模型）
+async function generateGreetingReply(parsed: any): Promise<string> {
+  const type = parsed.type ?? '';
+  const festival = parsed.festival ?? '';
+  const period = parsed.greeting_period ?? '';
+  const content = parsed.greeting_content ?? '';
+  const textModel = process.env.LLM_MODEL ?? 'Qwen3-8B-AWQ';
+
+  const isFestival = type.includes('祝福') || !!festival;
+  const scene = isFestival ? `節慶「${festival || '祝賀'}」` : `問安時段「${period || '問候'}」`;
+  const prompt = `收到客戶寄來的${type}（${scene}），圖片內容：${content || parsed.summary || ''}。
+請以溫暖、真摯、簡短（1-2 句）的繁體中文回覆對方，感謝並回應對方的心意，不要自我介紹。`;
+
+  const res = await fetch(`${DLLM_API_BASE}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(DLLM_API_KEY ? { Authorization: `Bearer ${DLLM_API_KEY}` } : {}),
+    },
+    body: JSON.stringify({
+      model: textModel,
+      messages: [
+        { role: 'system', content: '你是親切溫暖的業務助理，回覆簡短真摯。' },
+        { role: 'user', content: prompt },
+      ],
+      max_tokens: 200,
+      temperature: 0.7,
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
+  const j = (await res.json()) as any;
+  return j?.choices?.[0]?.message?.content?.trim() ?? '';
+}
+
 // 依 type 產生給 LINE 的回覆（人讀，非原始 JSON）
 function formatReply(parsed: any, receivedAt?: number): string {
   const type = parsed.type ?? '其他';
@@ -130,7 +165,22 @@ const handler = async (args: Record<string, unknown>): Promise<{ ok: boolean; ou
       parsed = { type: '其他', summary: text.trim().slice(0, 200) };
     }
 
-    return { ok: true, output: formatReply(parsed, receivedAt) };
+    const base = formatReply(parsed, receivedAt);
+
+    // 賀卡 / 問安卡：生成個人化祝賀回覆並置頂
+    const isGreetingType = (parsed.type ?? '').includes('問安') || (parsed.type ?? '').includes('祝福');
+    if (isGreetingType) {
+      try {
+        const reply = await generateGreetingReply(parsed);
+        if (reply) {
+          return { ok: true, output: `${reply}\n\n${base}` };
+        }
+      } catch (e) {
+        logger.warn('ocr.greeting_generation_failed', { storageKey: media.storageKey, error: String(e) });
+      }
+    }
+
+    return { ok: true, output: base };
   } catch (e) {
     logger.warn('ocr.recognize_failed', { storageKey: media.storageKey, error: String(e) });
     return {

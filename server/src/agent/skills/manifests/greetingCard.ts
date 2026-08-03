@@ -1,6 +1,9 @@
 // Built-in skill: greeting-card
-// 節日祝賀 / 問安圖片偵測 → 回覆對應祝福語
-// 目前為降級回應：OCR 就緒後接賀卡分類
+// 回應祝賀及問安
+//
+// 實際實作整合於 ocr skill：OCR 分類為「問安卡/祝福賀卡」時，
+// 自動以 LLM 生成個人化祝賀/問安回覆（見 ocr.ts 的 generateGreetingReply）。
+// 此 skill 保留為觸發詞路由（/greeting 等），避免 slash 指令無對應 skill。
 
 import type { SkillManifest } from '../../types.js';
 import { registerInlineHandler } from '../../skillExecutor.js';
@@ -8,7 +11,7 @@ import { registerInlineHandler } from '../../skillExecutor.js';
 const handler = async (): Promise<{ ok: boolean; output: string }> => {
   return {
     ok: true,
-    output: `已收到您的節日賀卡！🎉 祝福語自動回覆功能即將開放，之後就會依節日自動回覆對應的問候。`,
+    output: '祝賀與問安回覆已整合於圖片解析流程 — 收到賀卡/問安卡圖片時會自動回覆。',
   };
 };
 
@@ -17,7 +20,7 @@ registerInlineHandler('greeting-card', handler);
 const manifest: SkillManifest = {
   id: 'greeting-card',
   name: '回應祝賀及問安',
-  description: '偵測節日祝賀、問安圖片，自動回覆對應祝福語',
+  description: '賀卡/問安圖片自動回覆祝福語（整合於 ocr skill 的 LLM 祝賀生成）',
   triggers: ['greeting', '賀卡', '問安', '祝賀'],
   parameters: [],
   executor: { type: 'inline', handler: 'greeting-card' },
