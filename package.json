@@ -13,8 +13,9 @@
     "lint:all": "npm run lint --prefix ./client; npm run lint --prefix ./server; npm run lint --prefix ./admin",
     "validate": "pnpm dlx concurrently --group --names expo,server,admin \"pnpm lint:client\" \"pnpm lint:server\" \"pnpm lint:admin\""
   },
-  "dependencies": {},
-  "devDependencies": {},
+  "devDependencies": {
+    "@playwright/test": "^1.62.0"
+  },
   "packageManager": "pnpm@9.0.0",
   "engines": {
     "pnpm": ">=9.0.0"
