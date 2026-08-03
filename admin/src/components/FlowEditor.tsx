@@ -636,6 +636,8 @@ function EditPanel({
   const [desc, setDesc] = useState(node.desc)
   const [enabled, setEnabled] = useState(node.enabled)
   const [config, setConfig] = useState<Record<string, any>>(node.config ?? {})
+  const [inputs, setInputs] = useState(node.inputs ?? '')
+  const [outputs, setOutputs] = useState(node.outputs ?? '')
   // 可維護狀態：false = 唯讀檢視；true = 可編輯表單
   const [maintainable, setMaintainable] = useState(false)
 
@@ -647,6 +649,8 @@ function EditPanel({
     setDesc(node.desc)
     setEnabled(node.enabled)
     setConfig(node.config ?? {})
+    setInputs(node.inputs ?? '')
+    setOutputs(node.outputs ?? '')
     setMaintainable(false)
   }, [node.id, node.label, node.desc, node.enabled])
 
@@ -877,26 +881,48 @@ function EditPanel({
         )}
 
         {/* 輸入資料（吃什麼 JSON） */}
-        {node.inputs && (
+        {inputs && (
           <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: '#059669', marginBottom: 6, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
               📥 輸入資料
             </div>
-            <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0, color: 'var(--text)' }}>
-              {node.inputs}
-            </pre>
+            {maintainable ? (
+              <textarea
+                className="form-input"
+                rows={4}
+                value={inputs}
+                placeholder="描述此節點輸入的資料/JSON 格式"
+                onChange={(e) => setInputs(e.target.value)}
+                style={{ fontFamily: 'monospace', fontSize: 12 }}
+              />
+            ) : (
+              <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0, color: 'var(--text)' }}>
+                {inputs}
+              </pre>
+            )}
           </div>
         )}
 
         {/* 輸出資料（吐什麼 JSON） */}
-        {node.outputs && (
+        {outputs && (
           <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: '#f97316', marginBottom: 6, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
               📤 輸出資料
             </div>
-            <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0, color: 'var(--text)' }}>
-              {node.outputs}
-            </pre>
+            {maintainable ? (
+              <textarea
+                className="form-input"
+                rows={4}
+                value={outputs}
+                placeholder="描述此節點輸出的資料/JSON 格式"
+                onChange={(e) => setOutputs(e.target.value)}
+                style={{ fontFamily: 'monospace', fontSize: 12 }}
+              />
+            ) : (
+              <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0, color: 'var(--text)' }}>
+                {outputs}
+              </pre>
+            )}
           </div>
         )}
       </div>
@@ -914,7 +940,7 @@ function EditPanel({
         </button>
         <button
           className="btn btn-primary"
-          onClick={() => onSave({ ...node, label, desc, enabled, config })}
+          onClick={() => onSave({ ...node, label, desc, enabled, config, inputs: inputs.trim() || undefined, outputs: outputs.trim() || undefined })}
         >
           <CheckIcon sx={{ fontSize: 16 }} /> Save
         </button>
