@@ -118,17 +118,6 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     group: '多媒體',
     hasFlow: true,
   },
-  {
-    id: 'llm-chat',
-    title: 'LLM 直接對話',
-    desc: '純 LLM 對話，無需其他工具或後端串接',
-    tag: 'CHAT',
-    color: '#10b981',
-    icon: 'Chat',
-    type: 'builtin',
-    enabled: true,
-    group: '客服',
-  },
 
   // ── Business（業務流程與生產力工具） ──
   {
@@ -142,19 +131,6 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     enabled: true,
     group: '整合',
     hasFlow: true,
-  },
-
-  // ── MCP Bridge（可透過 MCP 協定接入） ──
-  {
-    id: 'mcp-web-search',
-    title: '網頁搜尋',
-    desc: '即時搜尋網路資訊（Brave / Exa / 自訂搜尋引擎），附來源引用',
-    tag: 'MCP',
-    color: '#8b5cf6',
-    icon: 'TravelExplore',
-    type: 'mcp',
-    enabled: true,
-    group: '整合',
   },
 ]
 
