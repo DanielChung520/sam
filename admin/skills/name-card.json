@@ -920,7 +920,7 @@
     {
       "id": "greeting",
       "title": "回應祝賀及問安",
-      "desc": "接收 OCR 分類或排程觸發 → 檢查完整性 → 儲存 + SeaweedFS 連結 → 生成祝賀 → 檢查完整度 → 回覆",
+      "desc": "接收賀卡/問安分類 → 找朋友稱呼 → LLM 文雅祝賀（含稱呼）→ 品質檢查重試 → 發送；失敗通知主身",
       "color": "#f59e0b",
       "tag": "Greeting",
       "date": "2026-07-29",
@@ -931,7 +931,7 @@
             "id": "greet-1",
             "type": "trigger",
             "label": "接收觸發事件並確認分類",
-            "desc": "接收 OCR 分類結果或排程觸發，先確認圖片分類：\n• 問安卡 / 祝福賀卡 → 進入本流程（祝賀回覆）\n• 名片 → 分流至「名片收集與回應」skill\n• 其他 → 分流至「其他圖片解析」",
+            "desc": "接收 OCR 分類結果或排程觸發。確認分類：問安卡/祝福賀卡 → 進入本流程；名片 → card-collection；其他 → image-other。",
             "color": "#6366f1",
             "enabled": true,
             "config": {
@@ -941,8 +941,8 @@
                 "祝福賀卡"
               ]
             },
-            "inputs": "觸發來源：\n• OCR 分類結果\n• 排程事件（節慶/生日）\n{ type, festival/period, content, imageUri, channelId }\n\n分類確認：type 必須為「問安卡」或「祝福賀卡」",
-            "outputs": "確認通過 → 轉下游祝賀處理：\n{ type, festival, period, greeting, imageUri, channelId, timestamp }\n\n確認不通過 → 分流：名片 → card-collection；其他 → image-other",
+            "inputs": "觸發：\n• OCR 分類結果\n• 排程事件\n{ type, festival/period, content, imageUri, channelId }\n分類必須為問安卡或祝福賀卡",
+            "outputs": "確認通過 → { type, festival, period, content, imageUri, channelId, timestamp }",
             "propsSchema": [
               {
                 "name": "source",
@@ -951,11 +951,11 @@
                 "default": "OCR",
                 "options": [
                   {
-                    "label": "OCR 子流程（圖片分類）",
+                    "label": "OCR 子流程",
                     "value": "OCR"
                   },
                   {
-                    "label": "排程事件（節慶/生日）",
+                    "label": "排程事件",
                     "value": "排程"
                   }
                 ],
@@ -969,132 +969,46 @@
                   "問安卡",
                   "祝福賀卡"
                 ],
-                "desc": "僅此分類進入祝賀流程；名片分流至名片收集 skill，其他分流至其他圖片解析。"
+                "desc": "僅此分類進入祝賀流程。"
               }
             ]
           },
           {
             "id": "greet-2",
             "type": "condition",
-            "label": "① 檢查完整性",
-            "desc": "驗證 OCR 輸出為 greeting_card 或 daily_greeting，含 content、imageUri、userAccount",
+            "label": "① 找主身的朋友稱呼",
+            "desc": "依 channelId 找主身的朋友，取得稱呼（title > honorific > nickname > displayName）。朋友設置項尚未實作前以 displayName 兜底。",
             "color": "#eab308",
             "enabled": true,
             "config": {
-              "expression": "type in ['greeting_card','daily_greeting'] && content.festival 或 content.period 存在 && imageUri && userAccount && timestamp",
-              "outputs": [
-                "通過",
-                "不通過"
-              ]
+              "lookup": "contact.title / honorific / nickname / displayName"
             },
-            "inputs": "{ type, festival 或 period, greeting/content, imageUri, channelId }",
-            "outputs": "{ pass: 通過|不通過, data }",
+            "inputs": "{ channelId, userId }",
+            "outputs": "{ salutation: 稱呼 }",
             "propsSchema": [
               {
-                "name": "expression",
-                "label": "檢查條件",
+                "name": "lookup",
+                "label": "稱呼來源",
                 "type": "textarea",
-                "desc": "完整性驗證規則。預設：type 為問安卡/祝福賀卡且含 festival 或 period、greeting 非空。"
+                "desc": "稱呼優先序：title（職稱）→ honorific（尊稱）→ nickname（暱稱）→ displayName。朋友設置項未實作前用 displayName。"
               }
             ]
           },
           {
             "id": "greet-3",
-            "type": "storage",
-            "label": "② 儲存至問候資料庫",
-            "desc": "將賀卡/問安 JSON 寫入 greeting_cards collection",
-            "color": "#3b82f6",
-            "enabled": true,
-            "config": {
-              "collection": "greeting_cards",
-              "accountIsolation": true,
-              "fields": "{\"type\":\"{{type}}\", \"festival\":\"{{content.festival}}\", \"period\":\"{{content.period}}\", \"greeting\":\"{{content.greeting}}\", \"description\":\"{{content.description}}\", \"timestamp\":\"{{content.timestamp}}\", \"imageUri\":\"{{imageUri}}\", \"userAccount\":\"{{userAccount}}\", \"source\":\"{{source}}\"}"
-            },
-            "inputs": "{ type, festival, period, greeting, description, timestamp, imageUri, channelId }",
-            "outputs": "{ recordId, stored: true }",
-            "propsSchema": [
-              {
-                "name": "collection",
-                "label": "Collection",
-                "type": "string",
-                "default": "greeting_cards",
-                "desc": "問候資料庫 collection 名稱。"
-              }
-            ]
-          },
-          {
-            "id": "greet-4",
-            "type": "function",
-            "label": "③ SeaweedFS 連結確認",
-            "desc": "若有圖片則驗證 SeaweedFS 存在並建立關聯",
-            "color": "#22c55e",
-            "enabled": true,
-            "config": {
-              "code": "// if(imageUri) verifySeaweedFS(imageUri) && linkToRecord(greetId, imageUri)",
-              "timeout": 5000
-            },
-            "inputs": "{ imageUri, channelId }",
-            "outputs": "{ linked: true, imageUrl }",
-            "propsSchema": [
-              {
-                "name": "code",
-                "label": "處理邏輯",
-                "type": "code",
-                "desc": "SeaweedFS 連結驗證邏輯（預設：若有 imageUri 則驗證存在並建立關聯）。"
-              }
-            ]
-          },
-          {
-            "id": "greet-5",
-            "type": "condition",
-            "label": "是否需要即時回覆？",
-            "desc": "OCR 來圖需要即時回覆；排程推播則設定發送時間",
-            "color": "#eab308",
-            "enabled": true,
-            "config": {
-              "expression": "source === 'LINE 圖片' || source === 'LINE 文字'",
-              "outputs": [
-                "即時回覆",
-                "排程推送"
-              ]
-            },
-            "inputs": "{ source: OCR|排程 }",
-            "outputs": "{ 即時回覆 | 排程推送 }",
-            "propsSchema": [
-              {
-                "name": "source",
-                "label": "觸發來源",
-                "type": "select",
-                "default": "OCR",
-                "options": [
-                  {
-                    "label": "OCR 來圖（即時回覆）",
-                    "value": "OCR"
-                  },
-                  {
-                    "label": "排程事件（設定發送時間）",
-                    "value": "排程"
-                  }
-                ],
-                "desc": "決定即時回覆或排程推送。"
-              }
-            ]
-          },
-          {
-            "id": "greet-6",
             "type": "llm",
-            "label": "④ 生成個人化祝賀",
-            "desc": "依節慶/時段與內容生成個人化祝賀語",
+            "label": "② 生成文雅祝賀（含稱呼）",
+            "desc": "依節慶/時段與內容，以「稱呼」開頭生成文雅個人化祝賀語。",
             "color": "#f97316",
             "enabled": true,
             "config": {
-              "model": "dllm 預設",
+              "model": "Qwen3-8B-AWQ",
               "temperature": 0.7,
-              "maxTokens": 512,
-              "systemPrompt": "你是親切的業務助理，請根據節慶、時段與卡片內容，生成一句溫暖且個人化的祝賀或問候。"
+              "maxTokens": 200,
+              "systemPrompt": "你是文采優雅的業務助理，回覆簡短（1-2 句）且措辭雅緻，繁體中文。"
             },
-            "inputs": "{ festival 或 period, greeting, summary }",
-            "outputs": "{ reply: 個人化祝賀語 }",
+            "inputs": "{ salutation, type, festival/period, content }",
+            "outputs": "{ reply: 文雅祝賀（含稱呼） }",
             "propsSchema": [
               {
                 "name": "model",
@@ -1105,10 +1019,6 @@
                   {
                     "label": "Qwen3-8B-AWQ（dllm 預設）",
                     "value": "Qwen3-8B-AWQ"
-                  },
-                  {
-                    "label": "Qwen2.5-VL-7B-Instruct（視覺）",
-                    "value": "Qwen2.5-VL-7B-Instruct"
                   }
                 ],
                 "desc": "LLM 模型。預設走 dllm（localhost:11400）。"
@@ -1118,58 +1028,62 @@
                 "label": "溫度",
                 "type": "number",
                 "default": 0.7,
-                "desc": "生成隨機性（0-1），祝賀語可稍高較自然。"
+                "desc": "生成隨機性，文雅祝賀可稍高較自然。"
               },
               {
                 "name": "maxTokens",
                 "label": "最大 Token",
                 "type": "number",
                 "default": 200,
-                "desc": "祝賀回覆長度上限（簡短 1-2 句）。"
+                "desc": "祝賀回覆長度上限。"
               },
               {
                 "name": "systemPrompt",
                 "label": "System Prompt",
                 "type": "textarea",
-                "desc": "系統角色（預設：親切溫暖的業務助理）。"
+                "desc": "系統角色（預設：文采優雅的業務助理）。"
               }
             ]
           },
           {
-            "id": "greet-7",
+            "id": "greet-4",
             "type": "condition",
-            "label": "⑤ 檢查回覆完整度",
-            "desc": "確認 LLM 輸出有效內容（非空、長度 ≥ 5）",
+            "label": "③ 品質檢查（重試）",
+            "desc": "檢查 LLM 輸出：非空、長度 ≥ 5、含稱呼。失敗重試（最多 2 次）；仍失敗 → log + 通知主身。",
             "color": "#eab308",
             "enabled": true,
             "config": {
-              "expression": "llm_output 非空且長度 ≥ 5",
-              "outputs": [
-                "完整",
-                "不完整"
-              ]
+              "expression": "reply 非空 && 長度 ≥ 5 && 含稱呼",
+              "maxRetries": 2,
+              "onFail": "log + 通知主身（push 給 channel destination）"
             },
-            "inputs": "{ reply }",
-            "outputs": "{ pass: 通過|失敗, reply }",
+            "inputs": "{ reply, salutation }",
+            "outputs": "{ pass: 通過 | 重試 | 失敗 }",
             "propsSchema": [
               {
                 "name": "expression",
                 "label": "檢查條件",
                 "type": "textarea",
-                "desc": "回覆完整度：非空且長度 ≥ 5。"
+                "desc": "品質規則：非空、長度 ≥ 5、含稱呼。失敗重試最多 2 次，仍失敗通知主身。"
+              },
+              {
+                "name": "maxRetries",
+                "label": "最大重試次數",
+                "type": "number",
+                "default": 2,
+                "desc": "品質檢查失敗的重試次數。"
               }
             ]
           },
           {
-            "id": "greet-8",
+            "id": "greet-5",
             "type": "reply",
-            "label": "⑥ 發送祝賀",
-            "desc": "送出 LLM 生成的祝賀語（即時回覆）",
+            "label": "④ 發送祝賀",
+            "desc": "品質檢查通過後，發送祝賀回覆給朋友。",
             "color": "#06b6d4",
             "enabled": true,
             "config": {
-              "template": "{llm_output}",
-              "fallback": ""
+              "method": "reply"
             },
             "inputs": "{ reply, userId }",
             "outputs": "{ sent: true }",
@@ -1194,76 +1108,23 @@
             ]
           },
           {
-            "id": "greet-9",
-            "type": "reply",
-            "label": "⑥ Fallback 回覆",
-            "desc": "完整度檢查未過時使用預設祝賀",
-            "color": "#06b6d4",
-            "enabled": true,
-            "config": {
-              "template": "感謝您的祝福，也祝您一切順心！",
-              "fallback": "感謝您的祝福，也祝您一切順心！"
-            },
-            "inputs": "{ type, festival/period }",
-            "outputs": "{ reply: 預設祝賀 }",
-            "propsSchema": [
-              {
-                "name": "fallback",
-                "label": "預設祝賀語",
-                "type": "textarea",
-                "desc": "LLM 失敗時的預設回覆。"
-              }
-            ]
-          },
-          {
-            "id": "greet-10",
+            "id": "greet-6",
             "type": "function",
-            "label": "記錄錯誤日誌",
-            "desc": "資料不完整時寫入錯誤紀錄",
+            "label": "⑤ 通知主身（失敗）",
+            "desc": "品質檢查重試後仍失敗 → 記錄錯誤並 push 通知主身（channel destination）。",
             "color": "#22c55e",
             "enabled": true,
             "config": {
-              "code": "// logError({reason: 'greeting data incomplete', data, userAccount})",
-              "timeout": 1000
+              "code": "// notifyOwner(channelId, subject, detail) + logError(...)"
             },
-            "inputs": "{ error, source, channelId }",
-            "outputs": "{ logged: true }",
+            "inputs": "{ channelId, error, salutation }",
+            "outputs": "{ notified: true }",
             "propsSchema": [
               {
                 "name": "code",
-                "label": "紀錄邏輯",
+                "label": "通知邏輯",
                 "type": "code",
-                "desc": "錯誤日誌寫入邏輯。"
-              }
-            ]
-          },
-          {
-            "id": "greet-11",
-            "type": "dummy",
-            "label": "排程推送／結束",
-            "desc": "排程事件設為待推送；結束即時處理流程",
-            "color": "#94a3b8",
-            "enabled": true,
-            "config": {},
-            "inputs": "{ source, scheduledAt? }",
-            "outputs": "{ 排程: 待推送 | 即時: 完成 }",
-            "propsSchema": [
-              {
-                "name": "mode",
-                "label": "結束方式",
-                "type": "select",
-                "default": "即時",
-                "options": [
-                  {
-                    "label": "即時（完成）",
-                    "value": "即時"
-                  },
-                  {
-                    "label": "排程（待推送）",
-                    "value": "排程"
-                  }
-                ],
-                "desc": "流程結束方式。"
+                "desc": "失敗時 push 通知主身（channel destination）+ 寫入錯誤 log。"
               }
             ]
           }

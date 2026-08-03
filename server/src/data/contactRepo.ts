@@ -12,6 +12,9 @@ export interface Contact {
   displayName: string;
   pictureUrl?: string;
   statusMessage?: string;
+  title?: string;                  // 職稱（朋友設置項）
+  nickname?: string;               // 暱稱（朋友設置項）
+  honorific?: string;              // 尊稱（朋友設置項，如「王總」）
   tags: string[];
   score: number;
   lastMessageAt?: number;

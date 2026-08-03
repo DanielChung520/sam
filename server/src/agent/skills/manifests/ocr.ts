@@ -6,7 +6,7 @@ import { registerInlineHandler, getSkillExecutor } from '../../skillExecutor.js'
 import { getSkillRegistry } from '../../skillRegistry.js';
 import { getFileStorage } from '../../../lib/fileStorage.js';
 import { logger } from '../../logger.js';
-import { isGreetingType, generateGreetingReply } from '../../greetingService.js';
+import { isGreetingType, generatePersonalizedGreeting } from '../../greetingService.js';
 
 const DLLM_API_BASE = process.env.LLM_API_BASE ?? 'http://localhost:11400/v1';
 const DLLM_API_KEY = process.env.LLM_API_KEY ?? '';
@@ -106,8 +106,12 @@ const handler = async (args: Record<string, unknown>): Promise<{ ok: boolean; ou
   const input = args as unknown as {
     media?: { storageKey?: string; fileName?: string; receivedAt?: number };
     receivedAt?: number;
+    channelId?: string;
+    userId?: string;
   };
   const media = input.media;
+  const channelId = input.channelId ?? (input as any).media?.channelId ?? 'unknown';
+  const userId = input.userId ?? 'unknown';
   const receivedAt = typeof input.receivedAt === 'number'
     ? input.receivedAt
     : typeof media?.receivedAt === 'number' ? media.receivedAt : undefined;
@@ -137,11 +141,19 @@ const handler = async (args: Record<string, unknown>): Promise<{ ok: boolean; ou
 
     // 分流處理：依 OCR 分類
     if (isGreetingType(type)) {
-      // 問安卡 / 祝福賀卡 → 祝賀回覆
+      // 問安卡 / 祝福賀卡 → 個人化祝賀回覆（含稱呼 + 品質重試 + 通知主身）
       try {
-        const reply = await generateGreetingReply(parsed);
-        if (reply) {
-          return { ok: true, output: `${reply}\n\n${base}` };
+        const result = await generatePersonalizedGreeting({
+          type,
+          festival: parsed.festival,
+          greeting_period: parsed.greeting_period,
+          greeting_content: parsed.greeting_content,
+          summary: parsed.summary,
+          channelId,
+          userId,
+        });
+        if (result.ok && result.reply) {
+          return { ok: true, output: `${result.reply}\n\n${base}` };
         }
       } catch (e) {
         logger.warn('ocr.greeting_generation_failed', { storageKey: media.storageKey, error: String(e) });
