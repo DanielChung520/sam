@@ -15,6 +15,7 @@ import { findAgentById } from '../data/agentRepo.js';
 import { delegateToAgent, recordDelegation, type DelegationResult } from './agentDelegation.js';
 import { saveArtifact } from '../lib/artifactStore.js';
 import { logger } from './logger.js';
+import { getConversationStore } from './stateStore.js';
 
 export const NEW_COMMAND = '/new';
 export const NEW_COMMAND_RESPONSE = '好的，讓我們重新開始。有什麼可以幫您？';
@@ -53,11 +54,18 @@ export class PolarisPipeline {
       return { ...result, reset: false };
     }
 
+    // 選單等待狀態：user 剛輸入 / 或選了需變數的指令
+    const pending = await this.getMenuState(input.userId, input.channelId);
+    if (pending?.menuPending) {
+      return await this.handleMenuPending(input, text, pending);
+    }
+
     if (text === NEW_COMMAND) {
       return await this.handleReset(input);
     }
 
     if (text === '/') {
+      await this.setMenuState(input.userId, input.channelId, { menuPending: true });
       const menuText = await formatSlashMenuText(input.channelId);
       return {
         text: menuText,
@@ -67,6 +75,11 @@ export class PolarisPipeline {
         reset: false,
         slashMenuShown: true,
       };
+    }
+
+    // /編號 → 等價於輸入 / 再選數字
+    if (/^\/\d+$/.test(text)) {
+      return await this.handleMenuPending(input, text.slice(1), { menuPending: true });
     }
 
     if (text.startsWith('/')) {
@@ -160,6 +173,22 @@ export class PolarisPipeline {
         conversationId: input.conversationId ?? input.userId,
         state: 'idle',
         reset: false,
+      };
+    }
+
+    // 指令需要變數但沒提供 → 設 pendingArg 並提問，等 user 輸入
+    if (!target.remainingArgs) {
+      await this.setMenuState(input.userId, input.channelId, {
+        menuPending: true,
+        pendingArg: target.name,
+      });
+      return {
+        text: `請問你要 ${target.name} 做什麼？\n（輸入內容後自動執行，或輸入 0 取消）`,
+        intent: { type: 'menu_show' },
+        conversationId: input.conversationId ?? input.userId,
+        state: 'idle',
+        reset: false,
+        slashTarget: target,
       };
     }
 
@@ -298,6 +327,117 @@ export class PolarisPipeline {
       logger.warn('help_doc_failed', { channelId: input.channelId, error: String(e) });
       return null;
     }
+  }
+
+  // ── 選單等待狀態 ──────────────────────────────────
+
+  private async getMenuState(
+    userId: string,
+    channelId: string,
+  ): Promise<{ menuPending: boolean; pendingArg?: string } | null> {
+    try {
+      const store = getConversationStore();
+      const convs = await store.listByUser(userId, channelId);
+      if (convs.length === 0) return null;
+      const latest = convs.sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      const ctx = latest.context ?? {};
+      if (ctx.menuPending || ctx.pendingArg) {
+        return { menuPending: !!ctx.menuPending, pendingArg: ctx.pendingArg as string | undefined };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async setMenuState(
+    userId: string,
+    channelId: string,
+    state: { menuPending?: boolean; pendingArg?: string },
+  ): Promise<void> {
+    try {
+      const store = getConversationStore();
+      const convs = await store.listByUser(userId, channelId);
+      if (convs.length === 0) return;
+      const latest = convs.sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      await store.update(latest.id, latest.channelId, {
+        context: {
+          ...latest.context,
+          menuPending: state.menuPending ?? undefined,
+          pendingArg: state.pendingArg ?? undefined,
+        },
+      });
+    } catch {
+      /* 狀態寫入失敗不阻斷 */
+    }
+  }
+
+  // 選單等待中：數字選擇指令 / 無效輸入提示 / 0 結束
+  private async handleMenuPending(
+    input: HandleMessageInput,
+    text: string,
+    pending: { menuPending: boolean; pendingArg?: string },
+  ): Promise<PipelineResult> {
+    const trimmed = text.trim();
+
+    // 等待變數輸入（上一輪選了需參數的指令）
+    if (pending.pendingArg) {
+      if (trimmed === '0') {
+        await this.setMenuState(input.userId, input.channelId, { menuPending: false, pendingArg: undefined });
+        return {
+          text: '已取消，請輸入 / 重新查看指令。',
+          intent: { type: 'menu_show' },
+          conversationId: input.conversationId ?? input.userId,
+          state: 'idle',
+          reset: false,
+        };
+      }
+      if (trimmed.startsWith('/')) {
+        await this.setMenuState(input.userId, input.channelId, { menuPending: false, pendingArg: undefined });
+        return this.handleMessage({ ...input, text: trimmed });
+      }
+      // 收到變數 → 執行指令
+      const cmd = pending.pendingArg;
+      await this.setMenuState(input.userId, input.channelId, { menuPending: false, pendingArg: undefined });
+      return this.handleSlash(input, `/${cmd} ${trimmed}`.trim());
+    }
+
+    // 等待數字選擇
+    if (/^\d+$/.test(trimmed)) {
+      const num = Number(trimmed);
+      if (num === 0) {
+        await this.setMenuState(input.userId, input.channelId, { menuPending: false });
+        return {
+          text: '已結束，請輸入 / 重新查看指令。',
+          intent: { type: 'menu_show' },
+          conversationId: input.conversationId ?? input.userId,
+          state: 'idle',
+          reset: false,
+        };
+      }
+      const choice = await resolveMenuChoice(String(num), input.channelId);
+      if (!choice) {
+        const menuText = await formatSlashMenuText(input.channelId);
+        return {
+          text: `沒有收到指令（${num}）。請繼續輸入數值，或 0 結束等待指令。\n\n${menuText}`,
+          intent: { type: 'menu_show' },
+          conversationId: input.conversationId ?? input.userId,
+          state: 'idle',
+          reset: false,
+        };
+      }
+      return this.handleSlash(input, `/${choice.name} ${choice.remainingArgs}`.trim());
+    }
+
+    // 非數字 → 提示繼續
+    const menuText = await formatSlashMenuText(input.channelId);
+    return {
+      text: `沒有收到指令。請輸入數值，或 0 結束等待指令。\n\n${menuText}`,
+      intent: { type: 'menu_show' },
+      conversationId: input.conversationId ?? input.userId,
+      state: 'idle',
+      reset: false,
+    };
   }
 
   // 結構化產出 → 存 HTML 文件（SeaweedFS），回「標題 + 連結」
