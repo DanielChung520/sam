@@ -24,9 +24,10 @@ export function resolveSalutation(contact: {
   title?: string;
   nickname?: string;
   honorific?: string;
+  salutation?: string;
   displayName: string;
 }): string {
-  return contact.title || contact.honorific || contact.nickname || contact.displayName;
+  return contact.salutation || contact.title || contact.honorific || contact.nickname || contact.displayName;
 }
 
 // LLM 生成文雅祝福（含稱呼）
