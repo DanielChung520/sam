@@ -258,8 +258,10 @@ export async function resolveMenuChoice(input: string, channelId?: string): Prom
   const trimmed = input.trim();
   if (!/^\d+$/.test(trimmed)) return null;
   const idx = Number(trimmed);
-  const menu = await buildSlashMenu(channelId);
-  const item = menu.find((m) => m.index === idx);
+  const menu = (await buildSlashMenu(channelId)).filter((m) => VISIBLE_MENU_IDS.has(m.id));
+  // 與顯示選單一致的連續編號
+  const visible = menu.map((m, i) => ({ ...m, index: i + 1 }));
+  const item = visible.find((m) => m.index === idx);
   if (!item) return null;
   return {
     type: item.type,
@@ -270,11 +272,15 @@ export async function resolveMenuChoice(input: string, channelId?: string): Prom
 }
 
 export async function formatSlashMenuText(channelId?: string): Promise<string> {
-  const menu = (await buildSlashMenu(channelId)).filter((m) => VISIBLE_MENU_IDS.has(m.id));
+  const visible = (await buildSlashMenu(channelId)).filter((m) => VISIBLE_MENU_IDS.has(m.id));
+  // 重新連續編號（顯示用）
+  visible.forEach((m, i) => {
+    m.index = i + 1;
+  });
   const lines: string[] = ['📋 可用功能：', ''];
 
   const group = (label: string, type: MenuItemType) => {
-    const items = menu.filter((m) => m.type === type);
+    const items = visible.filter((m) => m.type === type);
     if (items.length === 0) return;
     lines.push(label);
     for (const m of items) {
@@ -289,5 +295,6 @@ export async function formatSlashMenuText(channelId?: string): Promise<string> {
   group('🛠 Skills（即時工具）', 'skill');
 
   lines.push('回覆數字選擇，或直接輸入 /指令 內容。');
+  lines.push('輸入 /？ 查看完整指令說明文件。');
   return lines.join('\n');
 }

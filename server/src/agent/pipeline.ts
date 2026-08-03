@@ -6,7 +6,10 @@ import {
   formatSlashMenuText,
   resolveSlashCommand,
   resolveMenuChoice,
+  buildSlashMenu,
+  VISIBLE_MENU_IDS,
   type ResolvedTarget,
+  type MenuItemType,
 } from './slashMenu.js';
 import { findAgentById } from '../data/agentRepo.js';
 import { delegateToAgent, recordDelegation, type DelegationResult } from './agentDelegation.js';
@@ -128,6 +131,21 @@ export class PolarisPipeline {
   }
 
   private async handleSlash(input: HandleMessageInput, text: string): Promise<PipelineResult> {
+    // /？ /help /? → 完整指令說明文件（HTML 存檔，回標題+連結）
+    const helpInput = text.trim();
+    if (helpInput === '/？' || helpInput === '/?' || helpInput === '/help' || helpInput === '／？') {
+      const doc = await this.buildHelpDoc(input);
+      if (doc) {
+        return {
+          text: doc,
+          intent: { type: 'menu_show' },
+          conversationId: input.conversationId ?? input.userId,
+          state: 'idle',
+          reset: false,
+        };
+      }
+    }
+
     let target = await resolveSlashCommand(text, input.channelId);
     if (!target) {
       target = await resolveMenuChoice(text, input.channelId);
@@ -219,6 +237,67 @@ export class PolarisPipeline {
     }
 
     return { ...result, reset: false, slashTarget: target };
+  }
+
+  // 產生完整指令說明文件（markdown → HTML 存 SeaweedFS，回標題+連結）
+  private async buildHelpDoc(input: HandleMessageInput): Promise<string | null> {
+    try {
+      const menu = await buildSlashMenu(input.channelId);
+      const visible = menu.filter((m) => VISIBLE_MENU_IDS.has(m.id));
+      visible.forEach((m, i) => {
+        m.index = i + 1;
+      });
+
+      const lines: string[] = [
+        '# SAM 分身助理指令說明',
+        '',
+        '輸入 `/` 可隨時查看功能選單；輸入 `/？` 查看本說明文件。',
+        '每個指令都可以用「數字」（例如 `1`）或「斜線指令」（例如 `/Spica 主題`）呼叫。',
+        '',
+      ];
+
+      const section = (label: string, type: MenuItemType, desc: string) => {
+        const items = visible.filter((m) => m.type === type);
+        if (!items.length) return;
+        lines.push(`## ${label}`);
+        lines.push('');
+        lines.push(desc);
+        lines.push('');
+        for (const m of items) {
+          const hint = m.argHint ? ` <${m.argHint}>` : '';
+          lines.push(`### ${m.index}. /${m.name}${hint}`);
+          lines.push('');
+          lines.push(`${m.description}`);
+          lines.push('');
+          lines.push(`- 指令：\`/${m.name}${hint}\``);
+          lines.push(`- 使用範例：\`/${m.name} ${m.argHint ? '你的' + (m.argHint === 'query' ? '查詢內容' : m.argHint === 'topic' ? '主題' : '內容') : ''}\``);
+          lines.push('');
+        }
+      };
+
+      section('主 Agents（會自己做決策）', 'main_agent', '這些 Agent 會理解你的需求並自行規劃、分工與執行，適合複雜任務。');
+      section('Sub-Agents（執行單一任務）', 'sub_agent', '每個 Sub-Agent 專精一種任務，輸入 `/名稱 任務內容` 直接呼叫。');
+      section('Skills（即時工具）', 'skill', '即時工具，可搭配參數直接使用。');
+
+      lines.push('## 其他可用指令');
+      lines.push('');
+      lines.push('- `/`：顯示功能選單');
+      lines.push('- `/？`、`/help`：顯示本說明文件');
+      lines.push('- `/new`：開始新的對話');
+      lines.push('');
+
+      const md = lines.join('\n');
+      const ref = await saveArtifact({
+        channelId: input.channelId,
+        title: 'SAM 分身助理指令說明',
+        markdown: md,
+        ownerUserId: input.userId,
+      });
+      return `📖 ${ref.title}\n\n${ref.shareUrl}`;
+    } catch (e) {
+      logger.warn('help_doc_failed', { channelId: input.channelId, error: String(e) });
+      return null;
+    }
   }
 
   // 結構化產出 → 存 HTML 文件（SeaweedFS），回「標題 + 連結」
