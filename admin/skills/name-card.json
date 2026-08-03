@@ -936,7 +936,9 @@
             "enabled": true,
             "config": {
               "source": "OCR 子流程 / 排程"
-            }
+            },
+            "inputs": "觸發來源：\n• OCR 分類結果（問安卡/祝福賀卡）\n• 排程事件（節慶/生日）\n{ type, festival/period, content, imageUri, channelId }",
+            "outputs": "觸發事件資料轉下游：\n{ type, festival, period, greeting, imageUri, channelId, timestamp }"
           },
           {
             "id": "greet-2",
@@ -951,7 +953,17 @@
                 "通過",
                 "不通過"
               ]
-            }
+            },
+            "inputs": "{ type, festival 或 period, greeting/content, imageUri, channelId }",
+            "outputs": "{ pass: 通過|不通過, data }",
+            "propsSchema": [
+              {
+                "name": "expression",
+                "label": "檢查條件",
+                "type": "textarea",
+                "desc": "完整性驗證規則。預設：type 為問安卡/祝福賀卡且含 festival 或 period、greeting 非空。"
+              }
+            ]
           },
           {
             "id": "greet-3",
@@ -964,7 +976,18 @@
               "collection": "greeting_cards",
               "accountIsolation": true,
               "fields": "{\"type\":\"{{type}}\", \"festival\":\"{{content.festival}}\", \"period\":\"{{content.period}}\", \"greeting\":\"{{content.greeting}}\", \"description\":\"{{content.description}}\", \"timestamp\":\"{{content.timestamp}}\", \"imageUri\":\"{{imageUri}}\", \"userAccount\":\"{{userAccount}}\", \"source\":\"{{source}}\"}"
-            }
+            },
+            "inputs": "{ type, festival, period, greeting, description, timestamp, imageUri, channelId }",
+            "outputs": "{ recordId, stored: true }",
+            "propsSchema": [
+              {
+                "name": "collection",
+                "label": "Collection",
+                "type": "string",
+                "default": "greeting_cards",
+                "desc": "問候資料庫 collection 名稱。"
+              }
+            ]
           },
           {
             "id": "greet-4",
@@ -976,7 +999,17 @@
             "config": {
               "code": "// if(imageUri) verifySeaweedFS(imageUri) && linkToRecord(greetId, imageUri)",
               "timeout": 5000
-            }
+            },
+            "inputs": "{ imageUri, channelId }",
+            "outputs": "{ linked: true, imageUrl }",
+            "propsSchema": [
+              {
+                "name": "code",
+                "label": "處理邏輯",
+                "type": "code",
+                "desc": "SeaweedFS 連結驗證邏輯（預設：若有 imageUri 則驗證存在並建立關聯）。"
+              }
+            ]
           },
           {
             "id": "greet-5",
@@ -991,7 +1024,28 @@
                 "即時回覆",
                 "排程推送"
               ]
-            }
+            },
+            "inputs": "{ source: OCR|排程 }",
+            "outputs": "{ 即時回覆 | 排程推送 }",
+            "propsSchema": [
+              {
+                "name": "source",
+                "label": "觸發來源",
+                "type": "select",
+                "default": "OCR",
+                "options": [
+                  {
+                    "label": "OCR 來圖（即時回覆）",
+                    "value": "OCR"
+                  },
+                  {
+                    "label": "排程事件（設定發送時間）",
+                    "value": "排程"
+                  }
+                ],
+                "desc": "決定即時回覆或排程推送。"
+              }
+            ]
           },
           {
             "id": "greet-6",
@@ -1005,7 +1059,48 @@
               "temperature": 0.7,
               "maxTokens": 512,
               "systemPrompt": "你是親切的業務助理，請根據節慶、時段與卡片內容，生成一句溫暖且個人化的祝賀或問候。"
-            }
+            },
+            "inputs": "{ festival 或 period, greeting, summary }",
+            "outputs": "{ reply: 個人化祝賀語 }",
+            "propsSchema": [
+              {
+                "name": "model",
+                "label": "模型",
+                "type": "select",
+                "default": "Qwen3-8B-AWQ",
+                "options": [
+                  {
+                    "label": "Qwen3-8B-AWQ（dllm 預設）",
+                    "value": "Qwen3-8B-AWQ"
+                  },
+                  {
+                    "label": "Qwen2.5-VL-7B-Instruct（視覺）",
+                    "value": "Qwen2.5-VL-7B-Instruct"
+                  }
+                ],
+                "desc": "LLM 模型。預設走 dllm（localhost:11400）。"
+              },
+              {
+                "name": "temperature",
+                "label": "溫度",
+                "type": "number",
+                "default": 0.7,
+                "desc": "生成隨機性（0-1），祝賀語可稍高較自然。"
+              },
+              {
+                "name": "maxTokens",
+                "label": "最大 Token",
+                "type": "number",
+                "default": 200,
+                "desc": "祝賀回覆長度上限（簡短 1-2 句）。"
+              },
+              {
+                "name": "systemPrompt",
+                "label": "System Prompt",
+                "type": "textarea",
+                "desc": "系統角色（預設：親切溫暖的業務助理）。"
+              }
+            ]
           },
           {
             "id": "greet-7",
@@ -1020,7 +1115,17 @@
                 "完整",
                 "不完整"
               ]
-            }
+            },
+            "inputs": "{ reply }",
+            "outputs": "{ pass: 通過|失敗, reply }",
+            "propsSchema": [
+              {
+                "name": "expression",
+                "label": "檢查條件",
+                "type": "textarea",
+                "desc": "回覆完整度：非空且長度 ≥ 5。"
+              }
+            ]
           },
           {
             "id": "greet-8",
@@ -1032,7 +1137,28 @@
             "config": {
               "template": "{llm_output}",
               "fallback": ""
-            }
+            },
+            "inputs": "{ reply, userId }",
+            "outputs": "{ sent: true }",
+            "propsSchema": [
+              {
+                "name": "method",
+                "label": "發送方式",
+                "type": "select",
+                "default": "reply",
+                "options": [
+                  {
+                    "label": "reply（即時回覆）",
+                    "value": "reply"
+                  },
+                  {
+                    "label": "push（推送）",
+                    "value": "push"
+                  }
+                ],
+                "desc": "LINE 訊息發送方式。"
+              }
+            ]
           },
           {
             "id": "greet-9",
@@ -1044,7 +1170,17 @@
             "config": {
               "template": "感謝您的祝福，也祝您一切順心！",
               "fallback": "感謝您的祝福，也祝您一切順心！"
-            }
+            },
+            "inputs": "{ type, festival/period }",
+            "outputs": "{ reply: 預設祝賀 }",
+            "propsSchema": [
+              {
+                "name": "fallback",
+                "label": "預設祝賀語",
+                "type": "textarea",
+                "desc": "LLM 失敗時的預設回覆。"
+              }
+            ]
           },
           {
             "id": "greet-10",
@@ -1056,7 +1192,17 @@
             "config": {
               "code": "// logError({reason: 'greeting data incomplete', data, userAccount})",
               "timeout": 1000
-            }
+            },
+            "inputs": "{ error, source, channelId }",
+            "outputs": "{ logged: true }",
+            "propsSchema": [
+              {
+                "name": "code",
+                "label": "紀錄邏輯",
+                "type": "code",
+                "desc": "錯誤日誌寫入邏輯。"
+              }
+            ]
           },
           {
             "id": "greet-11",
@@ -1065,7 +1211,28 @@
             "desc": "排程事件設為待推送；結束即時處理流程",
             "color": "#94a3b8",
             "enabled": true,
-            "config": {}
+            "config": {},
+            "inputs": "{ source, scheduledAt? }",
+            "outputs": "{ 排程: 待推送 | 即時: 完成 }",
+            "propsSchema": [
+              {
+                "name": "mode",
+                "label": "結束方式",
+                "type": "select",
+                "default": "即時",
+                "options": [
+                  {
+                    "label": "即時（完成）",
+                    "value": "即時"
+                  },
+                  {
+                    "label": "排程（待推送）",
+                    "value": "排程"
+                  }
+                ],
+                "desc": "流程結束方式。"
+              }
+            ]
           }
         ],
         "edges": [

@@ -14,7 +14,6 @@ import webSearchManifest from './skills/manifests/webSearch.js';
 import analyzeManifest from './skills/manifests/analyze.js';
 import writeManifest from './skills/manifests/write.js';
 import ocrManifest from './skills/manifests/ocr.js';
-import greetingCardManifest from './skills/manifests/greetingCard.js';
 import fileProcessManifest from './skills/manifests/fileProcess.js';
 import sttManifest from './skills/manifests/stt.js';
 import readmeManifest from './skills/manifests/readme.js';
@@ -26,7 +25,6 @@ const BUILTIN_MANIFESTS: SkillManifest[] = [
   analyzeManifest,
   writeManifest,
   ocrManifest,
-  greetingCardManifest,
   fileProcessManifest,
   sttManifest,
   readmeManifest,

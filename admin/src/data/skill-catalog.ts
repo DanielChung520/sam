@@ -90,8 +90,8 @@ export const SKILL_CATALOG: SkillDefinition[] = [
   },
   {
     id: 'greeting',
-    title: '回應祝賀及問安',
-    desc: '偵測節日祝賀、問安圖片，自動回覆對應祝福語',
+    title: '打招呼',
+    desc: '回應使用者招呼、寒暄，並自我介紹與提示 / 工作清單（賀卡/問安自動回覆已整合於 OCR 解析）',
     tag: 'Greeting',
     color: '#f59e0b',
     icon: 'Celebration',
