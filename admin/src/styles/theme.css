@@ -653,3 +653,9 @@ textarea.form-input {
   background: rgba(255,255,255,0.1);
   color: white;
 }
+
+/* ── Drawer 滑入動畫 ── */
+@keyframes drawerSlideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}

@@ -5,6 +5,7 @@
  */
 import { useState, useEffect } from 'react'
 import { get, post, patch as apiPatch, del } from '../api/client'
+import { AvatarPicker } from '../components/AvatarPicker'
 
 /* ── Types ── */
 
@@ -13,6 +14,7 @@ interface AgentDto {
   name: string
   model: string
   enabled: boolean
+  category?: string
 }
 
 interface SkillDto {
@@ -20,6 +22,15 @@ interface SkillDto {
   name: string
   description: string
   enabled: boolean
+}
+
+interface AccountDto {
+  _key: string
+  name: string
+  email?: string
+  username?: string
+  channelIds?: string[]
+  enabled?: boolean
 }
 
 interface ChannelDto {
@@ -35,6 +46,7 @@ interface ChannelDto {
   permissions?: string[]
   inheritedPermissions?: string[]
   authorizedAgents?: string[]
+  avatar?: string
   pushEnabled?: boolean
   ackEnabled?: boolean
   ackMessage?: string
@@ -82,6 +94,7 @@ const PLATFORM_CONFIG_FIELDS: Record<Platform, { key: string; label: string; pas
 export function Channels() {
   const [channels, setChannels] = useState<ChannelDto[]>([])
   const [agents, setAgents] = useState<AgentDto[]>([])
+  const [accounts, setAccounts] = useState<AccountDto[]>([])
   const [skills, setSkills] = useState<SkillDto[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -91,7 +104,6 @@ export function Channels() {
   const [formPlatform, setFormPlatform] = useState<Platform>('line')
   const [formName, setFormName] = useState('')
   const [formBusinessId, setFormBusinessId] = useState('')
-  const [formAgent, setFormAgent] = useState('')
   const [formChannelId, setFormChannelId] = useState('')
   const [formDestination, setFormDestination] = useState('')
   const [formSecret, setFormSecret] = useState('')
@@ -113,6 +125,7 @@ export function Channels() {
   const [dPermissions, setDPermissions] = useState<string[]>([])
   const [dInherited, setDInherited] = useState<string[]>([])
   const [dPermAll, setDPermAll] = useState(true)
+  const [dAvatar, setDAvatar] = useState('')
   const [dPushEnabled, setDPushEnabled] = useState(true)
   const [dAckEnabled, setDAckEnabled] = useState(true)
   const [dAckMessage, setDAckMessage] = useState('')
@@ -128,14 +141,16 @@ export function Channels() {
     setLoading(true)
     setError(null)
     try {
-      const [chRes, agRes, skRes] = await Promise.all([
+      const [chRes, agRes, skRes, acRes] = await Promise.all([
         get<{ data: ChannelDto[] }>('/admin/channels'),
         get<{ data: AgentDto[] }>('/admin/agents'),
         get<{ data: SkillDto[] }>('/agent/skills'),
+        get<{ data: AccountDto[] }>('/admin/accounts'),
       ])
       setChannels(chRes.data ?? [])
       setAgents(agRes.data ?? [])
       setSkills(skRes.data ?? [])
+      setAccounts(acRes.data ?? [])
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -153,7 +168,6 @@ export function Channels() {
     setFormPlatform('line')
     setFormName('')
     setFormBusinessId('')
-    setFormAgent('')
     setFormChannelId('')
     setFormDestination('')
     setFormSecret('')
@@ -169,7 +183,6 @@ export function Channels() {
         channelId: formChannelId,
         channelSecret: formSecret,
         accessToken: formToken,
-        linkedAgentKey: formAgent,
         businessOwnerId: formBusinessId || 'admin',
       }
       if (formDestination) body.destination = formDestination
@@ -193,6 +206,7 @@ export function Channels() {
     setDName(ch.name)
     setDBusinessId(ch.businessOwnerId)
     setDAgent(ch.linkedAgentKey)
+    setDAvatar(ch.avatar || '')
     setDChannelId(ch.channelId)
     setDDestination(ch.destination || '')
     setDSecret(ch.channelSecret || '')
@@ -228,6 +242,7 @@ export function Channels() {
       if (dBusinessId) body.businessOwnerId = dBusinessId
       // permissions：全部允許 = 不送（undefined）；限制 = 送額外增補清單
       if (!dPermAll) body.permissions = dPermissions
+      if (dAvatar) body.avatar = dAvatar
       body.pushEnabled = dPushEnabled
       body.ackEnabled = dAckEnabled
       if (dAckMessage) body.ackMessage = dAckMessage
@@ -394,16 +409,24 @@ export function Channels() {
 
                 {/* Card body */}
                 <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 14 }}>
-                  {/* Platform icon */}
+                  {/* Platform icon / avatar */}
                   <div
                     style={{
                       width: 64, height: 64, borderRadius: 10,
                       background: '#f0f9ff', display: 'flex',
                       alignItems: 'center', justifyContent: 'center',
-                      fontSize: 28, flexShrink: 0,
+                      fontSize: 28, flexShrink: 0, overflow: 'hidden',
                     }}
                   >
-                    {meta.icon}
+                    {ch.avatar ? (
+                      ch.avatar.startsWith('data:') ? (
+                        <img src={ch.avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <img src={`/api/v1/avatars/${encodeURIComponent(ch.avatar)}`} alt={ch.avatar} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      )
+                    ) : (
+                      meta.icon
+                    )}
                   </div>
                   {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -463,17 +486,22 @@ export function Channels() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Business Owner ID</label>
-                  <input className="form-input" value={formBusinessId} onChange={(e) => setFormBusinessId(e.target.value)} placeholder="admin" />
-                </div>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Link Agent</label>
-                  <select className="form-input" value={formAgent} onChange={(e) => setFormAgent(e.target.value)}>
-                    <option value="">— None —</option>
-                    {agents.map((a) => (
-                      <option key={a._key} value={a._key}>{a.name} ({a.model})</option>
+                  <label className="form-label">所屬帳號 *</label>
+                  <select className="form-input" value={formBusinessId} onChange={(e) => setFormBusinessId(e.target.value)}>
+                    <option value="">— 選擇帳號 —</option>
+                    {accounts.filter((a) => a.enabled !== false).map((a) => (
+                      <option key={a._key} value={a._key}>{a.name}（{a.username ?? a._key}）</option>
                     ))}
                   </select>
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Orchestration</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                      {agents.find((a) => a.category === 'orchestrator' && a.enabled)?.name ?? 'Polaris'}
+                    </span>
+                    <span className="badge badge-green">系統自動綁定</span>
+                  </div>
                 </div>
               </div>
 
@@ -517,7 +545,7 @@ export function Channels() {
 
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => { setCreateOpen(false); resetCreate() }}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleCreate} disabled={saving || !formName || !formChannelId}>
+              <button className="btn btn-primary" onClick={handleCreate} disabled={saving || !formName || !formChannelId || !formBusinessId}>
                 {saving ? 'Creating...' : 'Create'}
               </button>
             </div>
@@ -538,204 +566,252 @@ export function Channels() {
         >
           <div
             className="modal"
-            style={{ width: 500, position: 'fixed', right: 0, top: 0, bottom: 0, margin: 0, borderRadius: '12px 0 0 12px', overflow: 'auto' }}
+            style={{
+              width: 540,
+              maxWidth: '100vw',
+              maxHeight: 'none',
+              position: 'fixed',
+              right: 0,
+              top: 0,
+              bottom: 0,
+              margin: 0,
+              borderRadius: '12px 0 0 12px',
+              display: 'flex',
+              flexDirection: 'column',
+              padding: 0,
+              overflow: 'hidden',
+              boxShadow: '-8px 0 32px rgba(0,0,0,0.15)',
+              animation: 'drawerSlideIn 0.25s ease-out',
+            }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="modal-header">
+            <div className="modal-header" style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0, marginBottom: 0 }}>
               <h2 className="modal-title">{detailMeta?.icon} Channel Settings</h2>
               <button className="modal-close" onClick={() => { setDetailOpen(false); setDetailChannel(null) }}>✕</button>
             </div>
 
-            <div style={{ display: 'grid', gap: 16 }}>
-              {/* Read-only key + webhook */}
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">Channel Key</label>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <input className="form-input" value={detailChannel.id} readOnly style={{ fontSize: 11, fontFamily: 'monospace', flex: 1 }} />
-                  <button className="btn btn-sm btn-secondary" onClick={() => copy(detailChannel.id)}>Copy</button>
-                </div>
-              </div>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">Webhook Destination</label>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <input className="form-input" value={dDestination} onChange={(e) => setDDestination(e.target.value)} placeholder="LINE destination (Bot User ID)" style={{ fontSize: 11, fontFamily: 'monospace', flex: 1 }} />
-                </div>
-              </div>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">Webhook URL</label>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <input className="form-input" value={webhookUrl(detailChannel)} readOnly style={{ fontSize: 11, fontFamily: 'monospace', flex: 1 }} />
-                  <button className="btn btn-sm btn-secondary" onClick={() => copy(webhookUrl(detailChannel))}>Copy</button>
-                </div>
-              </div>
-
-              {/* Test connection */}
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">Connection</label>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button className="btn btn-sm btn-primary" onClick={handleTestConnection} disabled={testing}>
-                    {testing ? 'Testing...' : 'Test Connection'}
-                  </button>
-                  {testResult && (
-                    <span style={{ fontSize: 12, color: testResult.ok ? '#059669' : 'var(--danger)' }}>
-                      {testResult.ok ? '✓' : '✗'} {testResult.message}
-                    </span>
-                  )}
-                </div>
-                {verifyInfo && (
-                  <div style={{ marginTop: 8, padding: 8, background: '#f8fafc', borderRadius: 6, fontSize: 11, color: 'var(--text-secondary)' }}>
-                    {verifyInfo.displayName && <div>Name: {verifyInfo.displayName}</div>}
-                    {verifyInfo.userId && <div>Bot ID: {verifyInfo.userId}</div>}
-                    {verifyInfo.basicId && <div>Basic ID: @{verifyInfo.basicId}</div>}
-                  </div>
-                )}
-              </div>
-
-              <div style={{ borderTop: '1px solid var(--border)' }} />
-
-              {/* Editable fields */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gap: 14, padding: '16px 20px', flex: 1, overflowY: 'auto' }}>
+              {/* ── 1. 基本資訊 ── */}
+              <div style={{ background: '#f8fafc', borderRadius: 10, padding: 14, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>🔧 基本資訊</div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 12 }}>Channel 身份與啟用狀態</div>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Platform</label>
-                  <select className="form-input" value={dPlatform} onChange={(e) => setDPlatform(e.target.value as Platform)}>
-                    {Object.entries(PLATFORM_META).map(([k, v]) => (
-                      <option key={k} value={k}>{v.icon} {v.label}</option>
+                  <label className="form-label">系統 Key（UUID，不可變）</label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input className="form-input" value={detailChannel.id} readOnly style={{ fontSize: 11, fontFamily: 'monospace', flex: 1 }} />
+                    <button className="btn btn-sm btn-secondary" onClick={() => copy(detailChannel.id)}>Copy</button>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 16, alignItems: 'center', marginTop: 12 }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">頭像</label>
+                    <AvatarPicker value={dAvatar} onChange={setDAvatar} />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Channel Name</label>
+                    <input className="form-input" value={dName} onChange={(e) => setDName(e.target.value)} />
+                  </div>
+                </div>
+                <div className="form-group" style={{ margin: '12px 0 0' }}>
+                  <label className="form-label">所屬帳號</label>
+                  <select className="form-input" value={dBusinessId} onChange={(e) => setDBusinessId(e.target.value)}>
+                    <option value="">— 選擇帳號 —</option>
+                    {accounts.filter((a) => a.enabled !== false).map((a) => (
+                      <option key={a._key} value={a._key}>{a.name}（{a.username ?? a._key}）</option>
                     ))}
                   </select>
                 </div>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Status</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
-                    <input type="checkbox" checked={detailChannel.enabled} onChange={() => handleToggle(detailChannel)} style={{ width: 16, height: 16 }} />
-                    <span style={{ fontSize: 12 }}>{detailChannel.enabled ? 'Active' : 'Disabled'}</span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Platform</label>
+                    <select className="form-input" value={dPlatform} onChange={(e) => setDPlatform(e.target.value as Platform)}>
+                      {Object.entries(PLATFORM_META).map(([k, v]) => (
+                        <option key={k} value={k}>{v.icon} {v.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Status</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
+                      <input type="checkbox" checked={detailChannel.enabled} onChange={() => handleToggle(detailChannel)} style={{ width: 16, height: 16 }} />
+                      <span style={{ fontSize: 12 }}>{detailChannel.enabled ? 'Active' : 'Disabled'}</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">Channel Name</label>
-                <input className="form-input" value={dName} onChange={(e) => setDName(e.target.value)} />
-              </div>
-
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">Business Owner ID</label>
-                <input className="form-input" value={dBusinessId} onChange={(e) => setDBusinessId(e.target.value)} />
-              </div>
-
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">主 Agent（預設入口）</label>
-                <select className="form-input" value={dAgent} onChange={(e) => setDAgent(e.target.value)}>
-                  <option value="">— None —</option>
-                  {agents.map((a) => (
-                    <option key={a._key} value={a._key}>{a.name} ({a.model})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">授權 Agents（可多選）</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                  {agents.filter((a) => a.enabled && a._key !== dAgent).map((a) => (
-                    <label key={a._key} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12 }}>
+              {/* ── 2. LINE 連線 ── */}
+              <div style={{ background: '#f8fafc', borderRadius: 10, padding: 14, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>🔌 LINE 連線</div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 12 }}>Webhook 路由與 credential 驗證</div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Webhook Destination（Bot User ID）</label>
+                  <input className="form-input" value={dDestination} onChange={(e) => setDDestination(e.target.value)} placeholder="LINE destination (Bot User ID)" style={{ fontSize: 11, fontFamily: 'monospace' }} />
+                </div>
+                <div className="form-group" style={{ margin: '10px 0 0' }}>
+                  <label className="form-label">Webhook URL</label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input className="form-input" value={webhookUrl(detailChannel)} readOnly style={{ fontSize: 11, fontFamily: 'monospace', flex: 1 }} />
+                    <button className="btn btn-sm btn-secondary" onClick={() => copy(webhookUrl(detailChannel))}>Copy</button>
+                  </div>
+                </div>
+                <div className="form-group" style={{ margin: '10px 0 0' }}>
+                  <label className="form-label">連線狀態</label>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button className="btn btn-sm btn-primary" onClick={handleTestConnection} disabled={testing}>
+                      {testing ? 'Testing...' : 'Test Connection'}
+                    </button>
+                    {testResult && (
+                      <span style={{ fontSize: 12, color: testResult.ok ? '#059669' : 'var(--danger)' }}>
+                        {testResult.ok ? '✓' : '✗'} {testResult.message}
+                      </span>
+                    )}
+                  </div>
+                  {verifyInfo && (
+                    <div style={{ marginTop: 8, padding: 8, background: '#fff', borderRadius: 6, fontSize: 11, color: 'var(--text-secondary)' }}>
+                      {verifyInfo.displayName && <div>Name: {verifyInfo.displayName}</div>}
+                      {verifyInfo.userId && <div>Bot ID: {verifyInfo.userId}</div>}
+                      {verifyInfo.basicId && <div>Basic ID: @{verifyInfo.basicId}</div>}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 10 }}>
+                  {PLATFORM_CONFIG_FIELDS.line.map((f) => (
+                    <div key={f.key} className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">{f.label}</label>
                       <input
-                        type="checkbox"
-                        checked={dAuthorizedAgents.includes(a._key)}
+                        className="form-input"
+                        type={f.password ? 'password' : 'text'}
+                        value={
+                          f.key === 'channelId' ? dChannelId :
+                          f.key === 'channelSecret' ? dSecret : dToken
+                        }
                         onChange={(e) => {
-                          setDAuthorizedAgents(e.target.checked ? [...dAuthorizedAgents, a._key] : dAuthorizedAgents.filter((x) => x !== a._key))
+                          if (f.key === 'channelId') setDChannelId(e.target.value)
+                          else if (f.key === 'channelSecret') setDSecret(e.target.value)
+                          else setDToken(e.target.value)
                         }}
                       />
-                      {a.name}
-                    </label>
+                      {f.key === 'channelId' && (
+                        <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 3 }}>
+                          對應 LINE Developers Console 的 Channel ID，可維護
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
 
-              {/* Permissions — 可呼叫清單 */}
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
-                  🔐 Permissions（/ 可呼叫清單）
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 10 }}>
-                  系統指令（/ /new /help /readme）與所有 Skills 預設可用。權限僅控制可呼叫的 Agents。
-                </div>
-                {/* 基礎 skills 唯讀 — 所有 skills 皆默認必備 */}
-                {skills.length > 0 && (
-                  <>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>
-                      ⭐ Skills（預設可用，由 Agent 白名單控制）
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
-                      {skills.map((s) => (
-                        <span key={s.id} style={{ padding: '2px 8px', background: '#f1f5f9', color: '#334155', borderRadius: 4, fontSize: 11, fontWeight: 500 }}>
-                          {s.name}
-                        </span>
-                      ))}
-                    </div>
-                  </>
-                )}
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={dPermAll}
-                    onChange={(e) => setDPermAll(e.target.checked)}
-                    style={{ width: 15, height: 15 }}
-                  />
-                  <span style={{ fontSize: 12, fontWeight: 600 }}>全部允許（不限制）</span>
-                </label>
-                {!dPermAll && (
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    {/* 繼承白名單（唯讀） */}
-                    {dInherited.length > 0 && (
-                      <>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>
-                          📌 主 Agent + 授權 Agents 自動權限（唯讀）
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                          {dInherited.map((id) => {
-                            const agent = agents.find((a) => a._key === id)
-                            const skill = skills.find((s) => s.id === id)
-                            const label = agent?.name ?? skill?.name ?? id
-                            return (
-                              <span key={id} style={{ padding: '2px 8px', background: '#ecfdf5', color: '#059669', borderRadius: 4, fontSize: 11, fontWeight: 500 }}>
-                                {label}
-                              </span>
-                            )
-                          })}
-                        </div>
-                      </>
-                    )}
-                    {/* 額外增補 */}
-                    {agents.filter((a) => a.enabled).length > 0 && (
-                      <>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: '#059669', marginTop: 4 }}>🤖 額外 Agents</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                          {agents.filter((a) => a.enabled).map((a) => (
-                            <label key={a._key} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12 }}>
-                              <input
-                                type="checkbox"
-                                checked={dPermissions.includes(a._key)}
-                                onChange={(e) => {
-                                  setDPermissions(e.target.checked ? [...dPermissions, a._key] : dPermissions.filter((x) => x !== a._key))
-                                }}
-                              />
-                              {a.name}
-                            </label>
-                          ))}
-                        </div>
-                      </>
-                    )}
+              {/* ── 3. Agent 綁定與權限 ── */}
+              <div style={{ background: '#f8fafc', borderRadius: 10, padding: 14, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>🤖 Agent 綁定與權限</div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 12 }}>Orchestration 主 Agent + 授權 Agents，控制 / 可呼叫清單</div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Orchestration（系統自動綁定）</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                      {agents.find((a) => a._key === dAgent)?.name ?? 'Polaris'}
+                    </span>
+                    <span className="badge badge-green">自動綁定</span>
                   </div>
-                )}
+                  <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+                    主 Agent（Orchestration 入口）由系統固定，不需選擇。下方可授權其他 Agents。
+                  </div>
+                </div>
+                <div className="form-group" style={{ margin: '10px 0 0' }}>
+                  <label className="form-label">授權 Agents（可多選）</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                    {agents.filter((a) => a.enabled && a._key !== dAgent).map((a) => (
+                      <label key={a._key} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12 }}>
+                        <input
+                          type="checkbox"
+                          checked={dAuthorizedAgents.includes(a._key)}
+                          onChange={(e) => {
+                            setDAuthorizedAgents(e.target.checked ? [...dAuthorizedAgents, a._key] : dAuthorizedAgents.filter((x) => x !== a._key))
+                          }}
+                        />
+                        {a.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--border)', marginTop: 12, paddingTop: 12 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                    系統指令（/ /new /help /readme）與所有 Skills 預設可用。權限僅控制可呼叫的 Agents。
+                  </div>
+                  {skills.length > 0 && (
+                    <>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>
+                        ⭐ Skills（預設可用，由 Agent 白名單控制）
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, margin: '6px 0 10px' }}>
+                        {skills.map((s) => (
+                          <span key={s.id} style={{ padding: '2px 8px', background: '#fff', color: '#334155', borderRadius: 4, fontSize: 11, fontWeight: 500, border: '1px solid var(--border)' }}>
+                            {s.name}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={dPermAll}
+                      onChange={(e) => setDPermAll(e.target.checked)}
+                      style={{ width: 15, height: 15 }}
+                    />
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>全部允許（不限制）</span>
+                  </label>
+                  {!dPermAll && (
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {dInherited.length > 0 && (
+                        <>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>
+                            📌 主 Agent + 授權 Agents 自動權限（唯讀）
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                            {dInherited.map((id) => {
+                              const agent = agents.find((a) => a._key === id)
+                              const skill = skills.find((s) => s.id === id)
+                              const label = agent?.name ?? skill?.name ?? id
+                              return (
+                                <span key={id} style={{ padding: '2px 8px', background: '#ecfdf5', color: '#059669', borderRadius: 4, fontSize: 11, fontWeight: 500 }}>
+                                  {label}
+                                </span>
+                              )
+                            })}
+                          </div>
+                        </>
+                      )}
+                      {agents.filter((a) => a.enabled).length > 0 && (
+                        <>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: '#059669', marginTop: 4 }}>🤖 額外 Agents</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                            {agents.filter((a) => a.enabled).map((a) => (
+                              <label key={a._key} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={dPermissions.includes(a._key)}
+                                  onChange={(e) => {
+                                    setDPermissions(e.target.checked ? [...dPermissions, a._key] : dPermissions.filter((x) => x !== a._key))
+                                  }}
+                                />
+                                {a.name}
+                              </label>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Async Queue 設定 */}
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
-                  ⚡ 異步處理設定
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 10 }}>
-                  訊息異步入隊處理，立即回 200。慢任務完成後用 push 回覆（需 LINE 開 push 權限）。
-                </div>
+              {/* ── 4. 異步處理 ── */}
+              <div style={{ background: '#f8fafc', borderRadius: 10, padding: 14, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>⚡ 異步處理設定</div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 12 }}>訊息異步入隊 → 立即 200 → 背景並發處理 → push 結果</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Push 回覆</label>
@@ -771,35 +847,9 @@ export function Channels() {
                   />
                 </div>
               </div>
-
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10 }}>
-                  {detailMeta?.icon} {detailMeta?.label} Settings
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  {PLATFORM_CONFIG_FIELDS.line.map((f) => (
-                    <div key={f.key} className="form-group" style={{ margin: 0 }}>
-                      <label className="form-label">{f.label}</label>
-                      <input
-                        className="form-input"
-                        type={f.password ? 'password' : 'text'}
-                        value={
-                          f.key === 'channelId' ? dChannelId :
-                          f.key === 'channelSecret' ? dSecret : dToken
-                        }
-                        onChange={(e) => {
-                          if (f.key === 'channelId') setDChannelId(e.target.value)
-                          else if (f.key === 'channelSecret') setDSecret(e.target.value)
-                          else setDToken(e.target.value)
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
 
-            <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 16 }}>
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '14px 20px', margin: 0, flexShrink: 0, background: 'var(--bg-card)' }}>
               <button className="btn btn-sm btn-danger" onClick={() => handleDelete(detailChannel)}>Delete</button>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn btn-secondary" onClick={() => { setDetailOpen(false); setDetailChannel(null) }}>Cancel</button>

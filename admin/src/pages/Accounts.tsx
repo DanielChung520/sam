@@ -5,6 +5,10 @@ interface BusinessAccount {
   _key: string
   name: string
   email: string
+  username?: string
+  phone?: string
+  role?: string
+  lastLoginAt?: number
   businessOwnerId: string
   channelIds: string[]
   enabled: boolean
@@ -19,6 +23,18 @@ interface Channel {
   channelId: string
 }
 
+function fmtDate(ts?: number): string {
+  if (!ts) return '-'
+  const d = new Date(ts)
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
+}
+
+function fmtDateTime(ts?: number): string {
+  if (!ts) return '-'
+  const d = new Date(ts)
+  return `${fmtDate(ts)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 export function Accounts() {
   const [accounts, setAccounts] = useState<BusinessAccount[]>([])
   const [channels, setChannels] = useState<Channel[]>([])
@@ -27,7 +43,7 @@ export function Accounts() {
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<BusinessAccount | null>(null)
-  const [form, setForm] = useState({ name: '', email: '', businessOwnerId: '', channelId: '' })
+  const [form, setForm] = useState({ name: '', email: '', businessOwnerId: '', username: '', password: '', phone: '', role: 'business', channelId: '' })
   const [saving, setSaving] = useState(false)
 
   async function loadAll() {
@@ -50,18 +66,31 @@ export function Accounts() {
   useEffect(() => { loadAll() }, [])
 
   const filtered = accounts.filter(
-    (a) => a.name.toLowerCase().includes(search.toLowerCase()) || a.businessOwnerId.includes(search)
+    (a) =>
+      a.name.toLowerCase().includes(search.toLowerCase()) ||
+      a.businessOwnerId.includes(search) ||
+      (a.phone ?? '').includes(search) ||
+      (a.email ?? '').toLowerCase().includes(search.toLowerCase())
   )
 
   const openAdd = () => {
     setEditing(null)
-    setForm({ name: '', email: '', businessOwnerId: '', channelId: '' })
+    setForm({ name: '', email: '', businessOwnerId: '', username: '', password: '', phone: '', role: 'business', channelId: '' })
     setModalOpen(true)
   }
 
   const openEdit = (a: BusinessAccount) => {
     setEditing(a)
-    setForm({ name: a.name, email: a.email, businessOwnerId: a.businessOwnerId, channelId: a.channelIds[0] ?? '' })
+    setForm({
+      name: a.name,
+      email: a.email,
+      businessOwnerId: a.businessOwnerId,
+      username: a.username ?? '',
+      password: '',
+      phone: a.phone ?? '',
+      role: a.role ?? 'business',
+      channelId: a.channelIds[0] ?? '',
+    })
     setModalOpen(true)
   }
 
@@ -70,9 +99,21 @@ export function Accounts() {
     try {
       const channelIds = form.channelId ? [form.channelId] : []
       if (editing) {
-        await apiPatch(`/admin/accounts/${encodeURIComponent(editing._key)}`, { name: form.name, email: form.email, channelIds })
+        const body: Record<string, unknown> = { name: form.name, email: form.email, channelIds, phone: form.phone, role: form.role }
+        if (form.username) body.username = form.username
+        if (form.password) body.password = form.password
+        await apiPatch(`/admin/accounts/${encodeURIComponent(editing._key)}`, body)
       } else {
-        await post('/admin/accounts', { name: form.name, email: form.email, businessOwnerId: form.businessOwnerId })
+        await post('/admin/accounts', {
+          name: form.name,
+          email: form.email,
+          businessOwnerId: form.businessOwnerId,
+          username: form.username || undefined,
+          password: form.password || undefined,
+          phone: form.phone,
+          role: form.role,
+          channelIds,
+        })
       }
       setModalOpen(false)
       await loadAll()
@@ -104,7 +145,7 @@ export function Accounts() {
 
       <div className="card">
         <div className="toolbar">
-          <input className="toolbar-search" placeholder="Search accounts..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input className="toolbar-search" placeholder="Search name / ID / phone / email..." value={search} onChange={(e) => setSearch(e.target.value)} />
           <div className="toolbar-spacer" />
           <button className="btn btn-primary" onClick={openAdd} disabled={loading}>+ Add Account</button>
         </div>
@@ -120,35 +161,41 @@ export function Accounts() {
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Business ID</th>
+                <th>Account (Business ID)</th>
                 <th>Email</th>
-                <th>Channel</th>
-                <th>Source</th>
+                <th>Phone</th>
+                <th>Role</th>
                 <th>Status</th>
+                <th>Created</th>
+                <th>Last Login</th>
                 <th style={{ width: 120 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--text-secondary)' }}>Loading...</td></tr>
+                <tr><td colSpan={9} style={{ textAlign: 'center', padding: 24, color: 'var(--text-secondary)' }}>Loading...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--text-secondary)' }}>No results</td></tr>
+                <tr><td colSpan={9} style={{ textAlign: 'center', padding: 24, color: 'var(--text-secondary)' }}>No results</td></tr>
               ) : (
                 filtered.map((a) => (
                   <tr key={a._key}>
                     <td style={{ fontWeight: 600 }}>{a.name}</td>
                     <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{a.businessOwnerId}</td>
                     <td style={{ fontSize: 12 }}>{a.email || '-'}</td>
-                    <td style={{ fontSize: 11, fontFamily: 'monospace' }}>
-                      {(a.channelIds ?? []).map((cid) => channelMap[cid] || cid).join(', ') || '-'}
-                    </td>
+                    <td style={{ fontSize: 12 }}>{a.phone || '-'}</td>
                     <td>
-                      <span className={`badge ${a.source === 'admin' ? 'badge-green' : 'badge-gray'}`}>{a.source}</span>
+                      <span className={`badge ${a.role === 'admin' ? 'badge-red' : a.role === 'business' ? 'badge-blue' : 'badge-gray'}`}>
+                        {a.role ?? 'business'}
+                      </span>
                     </td>
                     <td>
                       <span className={`badge ${a.enabled ? 'badge-green' : 'badge-gray'}`}>
                         {a.enabled ? 'Active' : 'Disabled'}
                       </span>
+                    </td>
+                    <td style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{fmtDate(a.createdAt)}</td>
+                    <td style={{ fontSize: 11, color: a.lastLoginAt ? 'var(--text)' : 'var(--text-secondary)' }}>
+                      {fmtDateTime(a.lastLoginAt)}
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
@@ -166,33 +213,55 @@ export function Accounts() {
 
       {/* Add/Edit Modal */}
       {modalOpen && (
-        <div className="modal-overlay" onClick={() => setModalOpen(false)}>
-          <div className="modal" style={{ width: 480 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setModalOpen(false) }}>
+          <div className="modal" style={{ width: 520 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">{editing ? 'Edit Account' : 'Add Account'}</h2>
               <button className="modal-close" onClick={() => setModalOpen(false)}>✕</button>
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Name *</label>
-              <input className="form-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Business Owner ID *</label>
-              <input className="form-input" value={form.businessOwnerId} onChange={(e) => setForm({ ...form, businessOwnerId: e.target.value })} disabled={!!editing} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Email</label>
-              <input className="form-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Channel</label>
-              <select className="form-input" value={form.channelId} onChange={(e) => setForm({ ...form, channelId: e.target.value })}>
-                <option value="">— None —</option>
-                {channels.map((c) => (
-                  <option key={c._key} value={c._key}>{c.name} ({c.channelId})</option>
-                ))}
-              </select>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">Name *</label>
+                <input className="form-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">Account（Business ID）*</label>
+                <input className="form-input" value={form.businessOwnerId} onChange={(e) => setForm({ ...form, businessOwnerId: e.target.value })} disabled={!!editing} />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">登入帳號（username）</label>
+                <input className="form-input" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder={editing ? '留空不變更' : '與 Business ID 相同'} />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">密碼</label>
+                <input className="form-input" type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder={editing ? '留空不變更' : '預設 1234@5'} />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">Email</label>
+                <input className="form-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">手機號</label>
+                <input className="form-input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="09xx-xxxxxx" />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">角色標記</label>
+                <select className="form-input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+                  <option value="admin">admin</option>
+                  <option value="business">business</option>
+                  <option value="staff">staff</option>
+                </select>
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">Channel</label>
+                <select className="form-input" value={form.channelId} onChange={(e) => setForm({ ...form, channelId: e.target.value })}>
+                  <option value="">— None —</option>
+                  {channels.map((c) => (
+                    <option key={c._key} value={c._key}>{c.name} ({c.channelId})</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="modal-footer">
