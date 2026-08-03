@@ -1,14 +1,24 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { LogBox } from 'react-native';
+import { LogBox, View, ActivityIndicator } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { Provider } from '@/components/Provider';
+import { useAuth } from '@/contexts/AuthContext';
 
 import '../global.css';
 
 LogBox.ignoreLogs([
   "TurboModuleRegistry.getEnforcing(...): 'RNMapsAirModule' could not be found",
 ]);
+
+function AuthGuard() {
+  const { isAuthenticated } = useAuth();
+  return (
+    <Stack.Protected guard={isAuthenticated}>
+      <Stack.Screen name="(tabs)" />
+    </Stack.Protected>
+  );
+}
 
 export default function RootLayout() {
   return (
@@ -21,7 +31,9 @@ export default function RootLayout() {
           headerShown: false,
         }}
       >
-        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="login" options={{ headerShown: false }} />
+        <AuthGuard />
+        <Stack.Screen name="chat-detail" options={{ headerShown: false }} />
         <Stack.Screen name="chat-detail" options={{ headerShown: false }} />
         <Stack.Screen name="friend-detail" options={{ headerShown: false }} />
         <Stack.Screen name="broadcast-create" options={{ headerShown: false }} />

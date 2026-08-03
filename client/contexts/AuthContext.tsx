@@ -1,55 +1,73 @@
-// @ts-nocheck
-/**
- * 通用认证上下文
- *
- * 基于固定的 API 接口实现，可复用到其他项目
- * 其他项目使用时，只需修改 @api 的导入路径指向项目的 api 模块
- *
- * 注意：
- * - 如果需要登录/鉴权场景，请扩展本文件，完善 login/logout、token 管理、用户信息获取与刷新等逻辑
- * - 将示例中的占位实现替换为项目实际的接口调用与状态管理
- */
-import React, { createContext, useContext, ReactNode } from "react";
+// 業務員（客戶）認證上下文
+// 登入 la.aiconn.ai：username/password → JWT（含 businessOwnerId + channelIds）
 
-interface UserOut {
+import React, { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 
+export interface BusinessUser {
+  id: string;
+  name: string;
+  email: string;
+  businessOwnerId: string;
+  channelIds: string[];
 }
 
 interface AuthContextType {
-  user: UserOut | null;
+  user: BusinessUser | null;
   token: string | null;
   isAuthenticated: boolean;
-  isLoading: boolean;
-  login: (token: string) => Promise<void>;
-  logout: () => Promise<void>;
-  updateUser: (userData: Partial<UserOut>) => void;
+  login: (username: string, password: string) => Promise<void>;
+  logout: () => void;
 }
+
+const API_BASE = '/api/v1';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const value: AuthContextType = {
-    user: null,
-    token: null,
-    isAuthenticated: false,
-    isLoading: false,
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<BusinessUser | null>(() => {
+    try {
+      const raw = localStorage.getItem('sam_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('sam_token'));
 
-    // 登录逻辑，根据项目实际情况实现
-    login: async (token: string) => {}, // eslint-disable-line @typescript-eslint/no-empty-function
+  const login = useCallback(async (username: string, password: string) => {
+    const res = await fetch(`${API_BASE}/auth/business-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      throw new Error(json.error ?? '登入失敗');
+    }
+    setToken(json.token);
+    setUser(json.user);
+    localStorage.setItem('sam_token', json.token);
+    localStorage.setItem('sam_user', JSON.stringify(json.user));
+  }, []);
 
-    // 登出逻辑，根据项目实际情况实现
-    logout: async () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
+  const logout = useCallback(() => {
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem('sam_token');
+    localStorage.removeItem('sam_user');
+  }, []);
 
-    // 更新用户信息，根据项目实际情况实现
-    updateUser: () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
-  };
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
+  return (
+    <AuthContext.Provider
+      value={{ user, token, isAuthenticated: !!token, login, logout }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
 
-export const useAuth = (): AuthContextType => {
+export function useAuth(): AuthContextType {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
+  if (!context) throw new Error('useAuth must be used within AuthProvider');
   return context;
-};
+}
