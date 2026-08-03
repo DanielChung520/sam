@@ -398,26 +398,41 @@ async function sendReplyOrPush(
 ): Promise<void> {
   const chunks = chunkForLine(text);
   const messages = chunks.map((c) => ({ type: 'text' as const, text: c }));
+  const channelId = channel?._key ?? 'unknown';
 
+  let sent = false;
   if (client && replyToken) {
     try {
       await client.replyMessage({ replyToken, messages });
-      return;
+      sent = true;
     } catch (err) {
       logger.info('webhook.reply_failed_fallback_push', { userId, error: String(err) });
     }
   }
 
   // reply 失敗或無 replyToken → push（LINE push 需授權 + channel pushEnabled）
-  if (client && channel?.pushEnabled !== false && userId) {
+  if (!sent && client && channel?.pushEnabled !== false && userId) {
     try {
       await client.pushMessage({ to: userId, messages });
-      logger.debug('webhook.pushed', { channelId: channel?._key ?? 'unknown', userId });
+      sent = true;
+      logger.debug('webhook.pushed', { channelId, userId });
     } catch (err) {
-      logger.error('webhook.push_failed', { channelId: channel?._key ?? 'unknown', userId, error: String(err) });
+      logger.error('webhook.push_failed', { channelId, userId, error: String(err) });
     }
-  } else {
+  } else if (!sent) {
     logger.debug('webhook.no_reply_client', { userId, text });
+  }
+
+  // 回覆落庫（direction: out），讓 app 聊天室能看到自己的回話
+  if (sent && channelId !== 'unknown' && userId) {
+    try {
+      const { createMessage } = await import('../data/messageRepo.js');
+      for (const c of chunks) {
+        await createMessage({ channelId, userId, direction: 'out', type: 'text', text: c });
+      }
+    } catch (e) {
+      logger.warn('webhook.reply_persist_failed', { channelId, userId, error: String(e) });
+    }
   }
 }
 

@@ -81,6 +81,9 @@ router.get('/', async (req: any, res) => {
       }
     }
     list.sort((a: any, b: any) => {
+      // 主身本人置頂，再依 unread > 0 排序
+      if (a.isPrimary && !b.isPrimary) return -1;
+      if (!a.isPrimary && b.isPrimary) return 1;
       if (a.unreadCount > 0 && b.unreadCount === 0) return -1;
       if (a.unreadCount === 0 && b.unreadCount > 0) return 1;
       return 0;
