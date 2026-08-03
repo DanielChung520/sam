@@ -107,18 +107,10 @@ export class PolarisPipeline {
       return polarisRule;
     }
 
-    // 意圖引擎（DB 配置）：多關鍵詞 → 意圖 → 行為
+    // 意圖引擎（DB 配置）：多關鍵詞 → 意圖 → 行為（sirius/deneb/問候等皆由 DB 規則驅動）
     const intentResult = await this.matchIntentBehavior(input, text);
     if (intentResult) {
       return intentResult;
-    }
-
-    const intentHint = this.classifyPolarisIntent(text);
-    if (intentHint === 'sirius') {
-      return await this.handleDelegation(input, text, retrieved, 'sirius');
-    }
-    if (intentHint === 'deneb') {
-      return await this.handleDelegation(input, text, retrieved, 'deneb');
     }
 
     const enrichedInput: HandleMessageInput = {
@@ -543,15 +535,6 @@ export class PolarisPipeline {
     };
   }
 
-  private classifyPolarisIntent(text: string): 'sirius' | 'deneb' | null {
-    const lower = text.toLowerCase();
-    const siriusKeywords = ['研究', '報告', '比較', '分析', '列出', '步驟', '流程', '規劃', '設計', '整理', '摘要', '怎麼做', 'how to', 'research', 'report'];
-    const denebKeywords = ['哲學', '人生', '意義', '為什麼活著', '怎麼辦', '推薦', '建議', '看法', 'philosophy', 'meaning'];
-    if (siriusKeywords.some((k) => lower.includes(k))) return 'sirius';
-    if (denebKeywords.some((k) => lower.includes(k))) return 'deneb';
-    return null;
-  }
-
   // 意圖引擎（DB 配置）：依多關鍵詞規則決定行為
   private async matchIntentBehavior(
     input: HandleMessageInput,
@@ -652,7 +635,7 @@ export class PolarisPipeline {
         agentName,
         userMessage: text,
         depth: 0,
-        history: [agentName],
+        history: [],
         customerId: input.userId,
         channelId: input.channelId,
         systemContext: retrieved ? formatRetrievedContext(retrieved) : undefined,
