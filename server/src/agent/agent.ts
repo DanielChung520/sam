@@ -37,6 +37,7 @@ export interface HandleMessageInput {
     fileSize?: number;
     durationMs?: number;
     storageKey?: string;
+    receivedAt?: number;
   };
 }
 

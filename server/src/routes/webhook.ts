@@ -505,6 +505,7 @@ async function handleMediaMessage(
         fileSize: msg.fileSize,
         durationMs: msg.duration,
         storageKey: media?.storageKey,
+        receivedAt: media?.receivedAt ?? Date.now(),
       },
     });
     logger.info('webhook.media_handled', {

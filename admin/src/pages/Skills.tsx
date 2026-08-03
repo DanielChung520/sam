@@ -310,6 +310,8 @@ export function Skills() {
         icon: meta?.icon ?? 'Chat',
         tag: meta?.tag ?? '',
         hasFlow: meta?.hasFlow ?? !!flowDefs[s.id],
+        inputSchema: meta?.inputSchema,
+        outputSchema: meta?.outputSchema,
       }
     })
   }, [agentSkills])
@@ -446,6 +448,8 @@ export function Skills() {
           loading={flowLoading}
           onClose={() => setFlowSkill(null)}
           onSave={handleSave}
+          inputSchema={(flowSkill as any).inputSchema}
+          outputSchema={(flowSkill as any).outputSchema}
         />
       )}
 

@@ -34,6 +34,7 @@ export interface MediaDownloadResult {
   size: number;
   fileId: string;          // ArangoDB files collection _key/fileId
   messageId: string;
+  receivedAt: number;      // 接收時間（epoch ms）
 }
 
 // ─── 副檔名推導 ─────────────────────────────────────────────
@@ -102,6 +103,7 @@ export async function downloadAndStoreMedia(
     size,
     fileId: record.fileId,
     messageId: payload.messageId,
+    receivedAt: Date.now(),
   };
 }
 

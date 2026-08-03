@@ -44,6 +44,8 @@ interface FlowEditorProps {
   initialNodes: FlowNode[]
   initialEdges?: FlowEdgeDef[]
   onSave: (nodes: FlowNode[], edges?: FlowEdgeDef[]) => void
+  inputSchema?: { name: string; type: string; required: boolean; desc: string }[]
+  outputSchema?: { name: string; type: string; desc: string }[]
 }
 
 const NODE_WIDTH = 240
@@ -69,6 +71,8 @@ export function FlowEditor({
   initialNodes,
   initialEdges,
   onSave,
+  inputSchema,
+  outputSchema,
 }: FlowEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const graphRef = useRef<Graph | null>(null)
@@ -429,6 +433,50 @@ graph.draw()
               />
             ) : (
               <>
+                {/* 輸入 / 輸出規格 */}
+                {(inputSchema?.length || outputSchema?.length) && (
+                  <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
+                    {inputSchema && inputSchema.length > 0 && (
+                      <>
+                        <div style={{ fontWeight: 700, color: '#059669', marginBottom: 6 }}>
+                          📥 輸入規格
+                        </div>
+                        <div style={{ marginBottom: 10 }}>
+                          {inputSchema.map((f) => (
+                            <div key={f.name} style={{ display: 'flex', gap: 6, marginBottom: 3 }}>
+                              <span style={{ fontWeight: 600, color: 'var(--text)', minWidth: 70 }}>
+                                {f.name}
+                                {f.required && <span style={{ color: '#ef4444' }}>*</span>}
+                              </span>
+                              <span style={{ color: 'var(--text-secondary)', flex: 1 }}>
+                                {f.desc} <span style={{ opacity: 0.6 }}>({f.type})</span>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                    {outputSchema && outputSchema.length > 0 && (
+                      <>
+                        <div style={{ fontWeight: 700, color: '#f97316', marginBottom: 6 }}>
+                          📤 輸出規格
+                        </div>
+                        <div>
+                          {outputSchema.map((f) => (
+                            <div key={f.name} style={{ display: 'flex', gap: 6, marginBottom: 3 }}>
+                              <span style={{ fontWeight: 600, color: 'var(--text)', minWidth: 70 }}>
+                                {f.name}
+                              </span>
+                              <span style={{ color: 'var(--text-secondary)', flex: 1 }}>
+                                {f.desc} <span style={{ opacity: 0.6 }}>({f.type})</span>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
                 <div
                   style={{
                     padding: '14px 16px',

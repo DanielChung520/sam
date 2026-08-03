@@ -14,6 +14,10 @@ export interface SkillDefinition {
   enabled: boolean
   /** 設定 Schema（選填） */
   configSchema?: Record<string, any>
+  /** 輸入規格（選填）— 顯示於流程設置卡的「輸入」面板 */
+  inputSchema?: { name: string; type: string; required: boolean; desc: string }[]
+  /** 輸出規格（選填）— 顯示於流程設置卡的「輸出」面板 */
+  outputSchema?: { name: string; type: string; desc: string }[]
   /** 分組 */
   group: '客服' | '行銷' | '銷售' | '多媒體' | '會員' | '整合'
   /** 是否有 flow 定義（可在 Skills 頁面編輯流程圖） */
@@ -57,6 +61,20 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     enabled: true,
     group: '多媒體',
     hasFlow: true,
+    inputSchema: [
+      { name: 'image', type: 'image', required: true, desc: 'LINE 收到的圖片' },
+      { name: 'channelId', type: 'string', required: true, desc: 'LINE channel ID（依 channel 隔離備存）' },
+      { name: 'receivedAt', type: 'timestamp', required: true, desc: '接收時間' },
+    ],
+    outputSchema: [
+      { name: 'summary', type: 'string', desc: '圖片概述' },
+      { name: 'type', type: 'enum', desc: '名片 / 問安卡 / 祝福賀卡 / 其他' },
+      { name: 'name/title/company/phone/email', type: 'string', desc: '名片欄位（名字理論上為圖中最大字）' },
+      { name: 'other_contacts', type: 'object', desc: 'qq / line / 微信 等聯繫方式' },
+      { name: 'greeting_period/festival', type: 'string', desc: '問安時段（早/中/午/晚）或節慶名稱' },
+      { name: 'greeting_content', type: 'string', desc: '問候或祝福內容' },
+      { name: 'text', type: 'string', desc: '其他圖片掃描的全部文字' },
+    ],
   },
   {
     id: 'card-collection',
