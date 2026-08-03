@@ -89,6 +89,20 @@ export interface Agent {
     enabled: boolean;
     argHint?: string;
   }>;
+  // 意圖規則（多關鍵詞 → 意圖 → 行為）
+  intents?: Array<{
+    id: string;
+    name: string;
+    triggerType: 'keyword' | 'regex' | 'event' | 'messageType' | 'ocrType' | 'slash';
+    triggers: string[];
+    behavior: {
+      action: 'skill' | 'agent' | 'llm' | 'reply';
+      target: string;
+      params?: Record<string, unknown>;
+    };
+    enabled: boolean;
+    priority: number;
+  }>;
   routing?: Array<{
     id: string;
     pattern: string;
@@ -159,6 +173,7 @@ function withDefaults(raw: any): Agent {
     webhookPath: raw.webhookPath ?? `/webhook/agent_${raw._key}`,
 
     slashCommands: raw.slashCommands ?? [],
+    intents: raw.intents ?? [],
     routing: raw.routing ?? [],
 
     createdAt: raw.createdAt ?? Date.now(),

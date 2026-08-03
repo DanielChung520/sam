@@ -107,6 +107,12 @@ export class PolarisPipeline {
       return polarisRule;
     }
 
+    // 意圖引擎（DB 配置）：多關鍵詞 → 意圖 → 行為
+    const intentResult = await this.matchIntentBehavior(input, text);
+    if (intentResult) {
+      return intentResult;
+    }
+
     const intentHint = this.classifyPolarisIntent(text);
     if (intentHint === 'sirius') {
       return await this.handleDelegation(input, text, retrieved, 'sirius');
@@ -544,6 +550,61 @@ export class PolarisPipeline {
     if (siriusKeywords.some((k) => lower.includes(k))) return 'sirius';
     if (denebKeywords.some((k) => lower.includes(k))) return 'deneb';
     return null;
+  }
+
+  // 意圖引擎（DB 配置）：依多關鍵詞規則決定行為
+  private async matchIntentBehavior(
+    input: HandleMessageInput,
+    text: string,
+  ): Promise<PipelineResult | null> {
+    try {
+      const { getIntentRules, matchIntent } = await import('./intentEngine.js');
+      const rules = await getIntentRules();
+      if (rules.length === 0) return null;
+
+      const match = matchIntent(text, rules);
+      if (!match) return null;
+      const { rule } = match;
+
+      // reply → 直接回覆
+      if (rule.behavior.action === 'reply') {
+        return {
+          text: rule.behavior.target,
+          intent: { type: 'chitchat' },
+          conversationId: input.conversationId ?? input.userId,
+          state: 'idle',
+          reset: false,
+        };
+      }
+
+      // skill → 走 slash 路由（reuse resolveSlashCommand 格式）
+      if (rule.behavior.action === 'skill') {
+        return await this.handleSlash(input, `/${rule.behavior.target} ${text}`.trim());
+      }
+
+      // agent → 委派
+      if (rule.behavior.action === 'agent') {
+        const retrieved = this.enableRetrieval
+          ? await retrieveContext(input.userId, input.channelId, text).catch(() => undefined)
+          : undefined;
+        return await this.handleDelegation(input, text, retrieved, rule.behavior.target);
+      }
+
+      // llm → 交給主 agent（帶意圖提示）
+      if (rule.behavior.action === 'llm') {
+        const enriched: HandleMessageInput = {
+          ...input,
+          systemContext: rule.behavior.target
+            ? `（使用者意圖：${rule.name}）${rule.behavior.target}`
+            : input.systemContext,
+        };
+        const result = await this.agent.handleMessage(enriched);
+        return { ...result, reset: false };
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   // Polaris 行為路由（DB 配置）：依 routing 規則決定走哪個 skill / agent / 回覆

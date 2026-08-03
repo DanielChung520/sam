@@ -4,8 +4,8 @@
  * Shows: system prompt, model, rate limit, enabled skills, stats, linked channels
  * Round 1 scope: read + edit. Sub-Agent detail deferred to round 2.
  */
-import { useState, useEffect } from 'react'
-import { get, patch as apiPatch, del } from '../api/client'
+import { useState } from 'react'
+import { patch as apiPatch, del } from '../api/client'
 
 interface AgentCenterItem {
   id: string
@@ -45,33 +45,19 @@ export interface MainAgentDetail extends AgentCenterItem {
   }
 }
 
-interface LinkedChannel {
+// 意圖規則（多關鍵詞 → 意圖 → 行為）
+interface IntentRuleItem {
   id: string
   name: string
-  channelId: string
+  triggerType: 'keyword' | 'regex' | 'event' | 'messageType' | 'ocrType' | 'slash'
+  triggers: string[]
+  behavior: {
+    action: 'skill' | 'agent' | 'llm' | 'reply'
+    target: string
+    params?: Record<string, unknown>
+  }
   enabled: boolean
-}
-
-// / 指令列表項目
-interface SlashCommandItem {
-  command: string
-  label: string
-  description: string
-  target: string        // skill id 或 agent 名稱
-  targetType: 'skill' | 'agent'
-  enabled: boolean
-  argHint?: string
-}
-
-// 行為路由規則（輸入條件 → 行為）
-interface RoutingRule {
-  id: string
-  pattern: string       // 輸入匹配（關鍵字/regex/類型）
-  matchType: 'keyword' | 'regex' | 'type'
-  action: string        // 行為：skill / agent / reply
-  target: string        // skill id / agent 名 / 回覆文字
-  params: Record<string, unknown>
-  enabled: boolean
+  priority: number
 }
 
 export function AgentDetail({
@@ -85,11 +71,9 @@ export function AgentDetail({
   onSaved: () => Promise<void> | void
   onDeleted: () => Promise<void> | void
 }) {
-  const [tab, setTab] = useState<'persona' | 'basic' | 'intent' | 'commands' | 'routing' | 'behavior' | 'rate' | 'channels' | 'raw'>('persona')
-  const [loading, setLoading] = useState(false)
+  const [tab, setTab] = useState<'persona' | 'basic' | 'intent' | 'rate' | 'raw'>('persona')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [linkedChannels, setLinkedChannels] = useState<LinkedChannel[]>([])
 
   // Editable fields
   const [name, setName] = useState(item.name)
@@ -110,29 +94,8 @@ export function AgentDetail({
   const [conversationTtl, setConversationTtl] = useState(item.raw?.conversationTtl ?? 1800)
   const [historyLimit, setHistoryLimit] = useState(item.raw?.historyLimit ?? 20)
 
-  // / 指令列表（slashCommands）
-  const [slashCommands, setSlashCommands] = useState<SlashCommandItem[]>(item.raw?.slashCommands ?? [])
-
-  // 行為路由規則（routing）
-  const [routingRules, setRoutingRules] = useState<RoutingRule[]>(item.raw?.routing ?? [])
-
-  useEffect(() => {
-    loadLinkedChannels()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item.id])
-
-  async function loadLinkedChannels() {
-    setLoading(true)
-    try {
-      const res = await get<{ data: LinkedChannel[] }>(`/admin/channels`)
-      const channels = (res.data ?? []).filter((c) => c.id && c.name)
-      setLinkedChannels(channels.filter((c) => isLinkedToAgent(c, item.id)))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoading(false)
-    }
-  }
+  // 意圖規則（多關鍵詞 → 意圖 → 行為）
+  const [intents, setIntents] = useState<IntentRuleItem[]>(item.raw?.intents ?? [])
 
   async function handleSave() {
     setSaving(true)
@@ -152,8 +115,7 @@ export function AgentDetail({
         intentConfidenceThreshold: Number(intentConfidenceThreshold),
         conversationTtl: Number(conversationTtl),
         historyLimit: Number(historyLimit),
-        slashCommands,
-        routing: routingRules,
+        intents,
       })
       await onSaved()
     } catch (e) {
@@ -217,7 +179,7 @@ export function AgentDetail({
             gap: 4,
           }}
         >
-          {(['persona', 'basic', 'intent', 'commands', 'routing', 'behavior', 'rate', 'channels', 'raw'] as const).map((t) => (
+          {(['persona', 'basic', 'intent', 'rate', 'raw'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -232,7 +194,7 @@ export function AgentDetail({
                 fontSize: 13,
               }}
             >
-              {t === 'persona' ? 'Persona' : t === 'basic' ? '基本' : t === 'intent' ? '意圖' : t === 'commands' ? '/ 指令' : t === 'routing' ? '路由' : t === 'behavior' ? '行為' : t === 'rate' ? 'Rate' : t === 'channels' ? 'Channels' : 'Raw'}
+              {t === 'persona' ? 'Persona' : t === 'basic' ? '設定' : t === 'intent' ? '意圖' : t === 'rate' ? 'Rate' : 'Raw'}
             </button>
           ))}
         </div>
@@ -436,11 +398,6 @@ export function AgentDetail({
                   placeholder="你是一個專業的…"
                 />
               </div>
-            </>
-          )}
-
-          {tab === 'intent' && (
-            <>
               <div className="form-group">
                 <label>意圖分類信心門檻（Intent Confidence Threshold）</label>
                 <input
@@ -483,208 +440,142 @@ export function AgentDetail({
             </>
           )}
 
-          {tab === 'commands' && (
+          {tab === 'intent' && (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                  「/」指令列表 — 設定斜線指令的顯示與行為
+                  多關鍵詞 → 意圖 → 行為（依優先序高→低比對，命中即執行）
                 </div>
                 <button
-                  className="btn btn-secondary"
-                  onClick={() => setSlashCommands([...slashCommands, { command: '', label: '', description: '', target: '', targetType: 'skill', enabled: true }])}
+                  className="btn btn-primary"
+                  onClick={() =>
+                    setIntents([
+                      ...intents,
+                      {
+                        id: `intent-${Date.now()}`,
+                        name: '',
+                        triggerType: 'keyword',
+                        triggers: [],
+                        behavior: { action: 'llm', target: '' },
+                        enabled: true,
+                        priority: intents.length + 1,
+                      },
+                    ])
+                  }
                 >
-                  ＋ 新增指令
+                  ＋ 新增意圖規則
                 </button>
               </div>
-              {slashCommands.length === 0 ? (
+              {intents.length === 0 ? (
                 <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
-                  尚無自訂指令。點「＋ 新增指令」開始設定。
+                  尚無意圖規則。點「＋ 新增意圖規則」設定感知（關鍵詞/事件/OCR）與對應行為。
                 </div>
               ) : (
-                slashCommands.map((cmd, i) => (
-                  <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 8 }}>
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                      <input
-                        className="form-input"
-                        placeholder="/指令名"
-                        value={cmd.command}
-                        onChange={(e) => {
-                          const next = [...slashCommands]
-                          next[i] = { ...cmd, command: e.target.value }
-                          setSlashCommands(next)
-                        }}
-                        style={{ width: 140 }}
-                      />
-                      <input
-                        className="form-input"
-                        placeholder="顯示名稱"
-                        value={cmd.label}
-                        onChange={(e) => {
-                          const next = [...slashCommands]
-                          next[i] = { ...cmd, label: e.target.value }
-                          setSlashCommands(next)
-                        }}
-                        style={{ flex: 1 }}
-                      />
-                      <select
-                        value={cmd.targetType}
-                        onChange={(e) => {
-                          const next = [...slashCommands]
-                          next[i] = { ...cmd, targetType: e.target.value as 'skill' | 'agent' }
-                          setSlashCommands(next)
-                        }}
-                        className="form-input"
-                        style={{ width: 90 }}
-                      >
-                        <option value="skill">Skill</option>
-                        <option value="agent">Agent</option>
-                      </select>
-                      <input
-                        className="form-input"
-                        placeholder="目標（skill id 或 agent 名）"
-                        value={cmd.target}
-                        onChange={(e) => {
-                          const next = [...slashCommands]
-                          next[i] = { ...cmd, target: e.target.value }
-                          setSlashCommands(next)
-                        }}
-                        style={{ flex: 1 }}
-                      />
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-                        <input
-                          type="checkbox"
-                          checked={cmd.enabled}
-                          onChange={(e) => {
-                            const next = [...slashCommands]
-                            next[i] = { ...cmd, enabled: e.target.checked }
-                            setSlashCommands(next)
-                          }}
-                        />
-                        啟用
-                      </label>
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => setSlashCommands(slashCommands.filter((_, j) => j !== i))}
-                      >
-                        刪除
-                      </button>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <input
-                        className="form-input"
-                        placeholder="參數提示（如 <主題>）"
-                        value={cmd.argHint ?? ''}
-                        onChange={(e) => {
-                          const next = [...slashCommands]
-                          next[i] = { ...cmd, argHint: e.target.value }
-                          setSlashCommands(next)
-                        }}
-                        style={{ width: 200 }}
-                      />
-                      <input
-                        className="form-input"
-                        placeholder="描述（顯示在選單）"
-                        value={cmd.description}
-                        onChange={(e) => {
-                          const next = [...slashCommands]
-                          next[i] = { ...cmd, description: e.target.value }
-                          setSlashCommands(next)
-                        }}
-                        style={{ flex: 1 }}
-                      />
-                    </div>
-                  </div>
-                ))
-              )}
-            </>
-          )}
-
-          {tab === 'routing' && (
-            <>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                  行為路由 — 依輸入條件決定走哪個 skill / agent / 回覆
-                </div>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setRoutingRules([...routingRules, { id: `rule_${Date.now()}`, pattern: '', matchType: 'keyword', action: 'skill', target: '', params: {}, enabled: true }])}
-                >
-                  ＋ 新增規則
-                </button>
-              </div>
-              {routingRules.length === 0 ? (
-                <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
-                  尚無路由規則。點「＋ 新增規則」開始設定。
-                </div>
-              ) : (
-                routingRules.map((rule, i) => (
+                intents.map((rule, i) => (
                   <div key={rule.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 8 }}>
                     <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                      <select
-                        value={rule.matchType}
-                        onChange={(e) => {
-                          const next = [...routingRules]
-                          next[i] = { ...rule, matchType: e.target.value as RoutingRule['matchType'] }
-                          setRoutingRules(next)
-                        }}
-                        className="form-input"
-                        style={{ width: 100 }}
-                      >
-                        <option value="keyword">關鍵字</option>
-                        <option value="regex">Regex</option>
-                        <option value="type">類型</option>
-                      </select>
                       <input
                         className="form-input"
-                        placeholder="匹配條件（關鍵字/regex/類型）"
-                        value={rule.pattern}
-                        onChange={(e) => {
-                          const next = [...routingRules]
-                          next[i] = { ...rule, pattern: e.target.value }
-                          setRoutingRules(next)
-                        }}
-                        style={{ flex: 1 }}
+                        placeholder="規則名稱（如：名片收集）"
+                        value={rule.name}
+                        onChange={(e) =>
+                          setIntents(intents.map((r, j) => (j === i ? { ...r, name: e.target.value } : r)))
+                        }
+                        style={{ flex: 2 }}
                       />
                       <select
-                        value={rule.action}
-                        onChange={(e) => {
-                          const next = [...routingRules]
-                          next[i] = { ...rule, action: e.target.value as RoutingRule['action'] }
-                          setRoutingRules(next)
-                        }}
                         className="form-input"
-                        style={{ width: 100 }}
+                        value={rule.triggerType}
+                        onChange={(e) =>
+                          setIntents(
+                            intents.map((r, j) =>
+                              j === i ? { ...r, triggerType: e.target.value as IntentRuleItem['triggerType'] } : r,
+                            ),
+                          )
+                        }
+                        style={{ flex: 1 }}
                       >
+                        <option value="keyword">關鍵詞</option>
+                        <option value="regex">Regex</option>
+                        <option value="slash">/ 指令</option>
+                        <option value="event">事件</option>
+                        <option value="messageType">訊息類型</option>
+                        <option value="ocrType">OCR 類型</option>
+                      </select>
+                      <select
+                        className="form-input"
+                        value={rule.behavior.action}
+                        onChange={(e) =>
+                          setIntents(
+                            intents.map((r, j) =>
+                              j === i
+                                ? { ...r, behavior: { ...r.behavior, action: e.target.value as IntentRuleItem['behavior']['action'] } }
+                                : r,
+                            ),
+                          )
+                        }
+                        style={{ flex: 1 }}
+                      >
+                        <option value="llm">LLM 回覆</option>
                         <option value="skill">Skill</option>
                         <option value="agent">Agent</option>
-                        <option value="reply">直接回覆</option>
+                        <option value="reply">固定回覆</option>
                       </select>
                       <input
                         className="form-input"
-                        placeholder="目標（skill id / agent 名 / 回覆文字）"
-                        value={rule.target}
-                        onChange={(e) => {
-                          const next = [...routingRules]
-                          next[i] = { ...rule, target: e.target.value }
-                          setRoutingRules(next)
-                        }}
-                        style={{ flex: 1 }}
+                        placeholder="目標（skill id / agent / 回覆文字）"
+                        value={rule.behavior.target}
+                        onChange={(e) =>
+                          setIntents(
+                            intents.map((r, j) =>
+                              j === i ? { ...r, behavior: { ...r.behavior, target: e.target.value } } : r,
+                            ),
+                          )
+                        }
+                        style={{ flex: 3 }}
                       />
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                      <input
+                        className="form-input"
+                        placeholder="觸發詞（頓號分隔，如：名片、換名片）"
+                        value={rule.triggers.join('、')}
+                        onChange={(e) =>
+                          setIntents(
+                            intents.map((r, j) =>
+                              j === i
+                                ? { ...r, triggers: e.target.value.split(/[、,，\n]/).map((s) => s.trim()).filter(Boolean) }
+                                : r,
+                            ),
+                          )
+                        }
+                        style={{ flex: 3 }}
+                      />
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                        優先序
+                        <input
+                          className="form-input"
+                          type="number"
+                          value={rule.priority}
+                          onChange={(e) =>
+                            setIntents(intents.map((r, j) => (j === i ? { ...r, priority: Number(e.target.value) } : r)))
+                          }
+                          style={{ width: 70 }}
+                        />
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
                         <input
                           type="checkbox"
                           checked={rule.enabled}
-                          onChange={(e) => {
-                            const next = [...routingRules]
-                            next[i] = { ...rule, enabled: e.target.checked }
-                            setRoutingRules(next)
-                          }}
+                          onChange={(e) =>
+                            setIntents(intents.map((r, j) => (j === i ? { ...r, enabled: e.target.checked } : r)))
+                          }
                         />
                         啟用
                       </label>
                       <button
                         className="btn btn-secondary"
-                        onClick={() => setRoutingRules(routingRules.filter((_, j) => j !== i))}
+                        onClick={() => setIntents(intents.filter((_, j) => j !== i))}
                       >
                         刪除
                       </button>
@@ -739,70 +630,6 @@ export function AgentDetail({
             </>
           )}
 
-          {tab === 'channels' && (
-            <>
-              {loading ? (
-                <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-secondary)' }}>
-                  載入中…
-                </div>
-              ) : linkedChannels.length === 0 ? (
-                <div
-                  style={{
-                    padding: 24,
-                    textAlign: 'center',
-                    color: 'var(--text-secondary)',
-                    fontSize: 13,
-                  }}
-                >
-                  目前沒有 channel 連結到此 agent
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {linkedChannels.map((c) => (
-                    <div
-                      key={c.id}
-                      style={{
-                        padding: 12,
-                        background: 'var(--bg-secondary)',
-                        borderRadius: 6,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 10,
-                          padding: '2px 6px',
-                          background: c.enabled ? '#d1fae5' : '#f1f5f9',
-                          color: c.enabled ? '#065f46' : '#475569',
-                          borderRadius: 4,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {c.enabled ? '啟用' : '停用'}
-                      </span>
-                      <span style={{ fontWeight: 600, fontSize: 13 }}>{c.name}</span>
-                      <code style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{c.channelId}</code>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: 8,
-                  fontSize: 11,
-                  color: 'var(--text-secondary)',
-                  background: 'var(--bg-secondary)',
-                  borderRadius: 4,
-                }}
-              >
-                在「Channels」頁面設定 channel 的 linkedAgent
-              </div>
-            </>
-          )}
-
           {tab === 'raw' && (
             <pre
               style={{
@@ -841,13 +668,4 @@ export function AgentDetail({
       </div>
     </div>
   )
-}
-
-/* ── Helper: detect if a channel is linked to this agent ── */
-
-function isLinkedToAgent(channel: LinkedChannel, agentKey: string): boolean {
-  // The channel.list endpoint should already filter or include linkedAgentKey.
-  // For round 1 we use a heuristic: if the channel's name contains the agent key,
-  // it's likely linked. Real implementation should use channel.linkedAgentKey.
-  return channel.name?.toLowerCase().includes(agentKey.toLowerCase()) ?? false
 }

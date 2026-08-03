@@ -64,11 +64,32 @@ test.describe('Admin Panel - Channels & Agents', () => {
     await page.locator('.card').filter({ hasText: '對話編排' }).first().click();
     // Persona tab is default; should show '對話編排' template in modal
     await expect(page.locator('.modal').filter({ hasText: '對話編排' })).toBeVisible();
-    // Click '基本' tab
-    await page.locator('.modal button').filter({ hasText: '基本' }).click();
+    // Click '設定' tab
+    await page.locator('.modal button').filter({ hasText: '設定' }).click();
     await expect(page.locator('.modal input').first()).toBeVisible();
     // Close
     await page.locator('.modal-close').click();
+  });
+
+  test('AgentDetail shows 5 tabs (Persona/設定/意圖/Rate/Raw) and intent rules table', async ({ page }) => {
+    await page.goto('http://localhost:7012/agent-center', { waitUntil: 'networkidle' });
+    await page.locator('.card').filter({ hasText: '對話編排' }).first().click();
+    // 5 tabs, no legacy /指令 / 路由 / Channels tabs
+    const modal = page.locator('.modal');
+    await expect(modal.locator('button').filter({ hasText: 'Persona' })).toBeVisible();
+    await expect(modal.locator('button').filter({ hasText: '設定' })).toBeVisible();
+    await expect(modal.locator('button').filter({ hasText: '意圖' })).toBeVisible();
+    await expect(modal.locator('button').filter({ hasText: 'Rate' })).toBeVisible();
+    await expect(modal.locator('button').filter({ hasText: 'Raw' })).toBeVisible();
+    await expect(modal.locator('button').filter({ hasText: '/ 指令' })).toHaveCount(0);
+    await expect(modal.locator('button').filter({ hasText: '路由' })).toHaveCount(0);
+    // Intent tab shows rules table
+    await modal.locator('button').filter({ hasText: '意圖' }).click();
+    await expect(modal.locator('button').filter({ hasText: '＋ 新增意圖規則' })).toBeVisible();
+    // Intent params moved to 設定 tab
+    await modal.locator('button').filter({ hasText: '設定' }).click();
+    await expect(modal.locator('label').filter({ hasText: '意圖分類信心門檻' })).toBeVisible();
+    await modal.locator('.modal-close').click();
   });
 
   test('Sidebar has Agent Center not legacy Agent/Sub-Agents', async ({ page }) => {
