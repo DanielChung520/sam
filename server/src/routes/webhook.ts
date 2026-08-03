@@ -324,6 +324,16 @@ async function processQueueItem(item: import('../agent/asyncQueue.js').QueueItem
 
     const text: string = event.message?.text ?? '';
 
+    // 純 `/`（工作選單）：只有主身本人（userId == channel destination）可觸發；
+    // 朋友/客戶發的 `/` 暫時忽略，不回覆。
+    if (text.trim() === '/') {
+      const isPrimary = !!channel?.destination && userId === channel.destination;
+      if (!isPrimary) {
+        logger.info('webhook.slash_ignored_for_friend', { channelId, userId });
+        return;
+      }
+    }
+
     // ack：慢任務（taskforge 型 slash 指令）先回「處理中」，完成後再 push 結果
     const isSlowTask = isTaskforgeSlash(text);
     if (isSlowTask && channel?.ackEnabled !== false && client && replyToken) {
