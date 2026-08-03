@@ -12,6 +12,7 @@ import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme, type ThemeMode } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useChannel } from '@/contexts/ChannelContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons';
 
@@ -32,6 +33,7 @@ export default function SettingsScreen() {
   const [providerKey] = useState('sk-sam-••••7890');
   const router = useSafeRouter();
   const { logout } = useAuth();
+  const { channels, activeChannel, setActiveChannelKey } = useChannel();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = useThemedStyles((c) => ({
@@ -143,6 +145,19 @@ export default function SettingsScreen() {
       elevation: 4,
     },
     logoutText: { fontSize: 15, fontWeight: '700', color: c.danger },
+    channelOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+    },
+    channelOptionActive: { backgroundColor: c.primary08 },
+    channelOptionLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+    channelOptionText: { fontSize: 14, color: c.text },
+    channelOptionTextActive: { color: c.primary, fontWeight: '600' },
+    channelOptionHint: { fontSize: 11, color: c.textTertiary, marginTop: 2 },
   }));
 
   const themeLabel = themeMode === 'light' ? '淺色' : themeMode === 'dark' ? '深色' : '跟隨系統';
@@ -157,6 +172,42 @@ export default function SettingsScreen() {
           <Text style={styles.headerTitle}>設定</Text>
           <View style={{ width: 36 }} />
         </View>
+
+        {/* 主身帳號（LINE 分身） */}
+        {channels.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <FontAwesome6 name="id-card" size={16} color={colors.primary} />
+              <Text style={styles.sectionTitle}>主身帳號</Text>
+            </View>
+            {channels.map((ch) => {
+              const isActive = activeChannel?.key === ch.key;
+              return (
+                <TouchableOpacity
+                  key={ch.key}
+                  style={[styles.channelOption, isActive && styles.channelOptionActive]}
+                  onPress={() => setActiveChannelKey(ch.key)}
+                >
+                  <View style={styles.channelOptionLeft}>
+                    <FontAwesome6
+                      name={isActive ? 'circle-check' : 'circle'}
+                      size={16}
+                      color={isActive ? colors.primary : colors.textTertiary}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.channelOptionText, isActive && styles.channelOptionTextActive]}>
+                        {ch.name}
+                      </Text>
+                      {isActive && (
+                        <Text style={styles.channelOptionHint}>目前正在檢視此分身的好友與聊天</Text>
+                      )}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
 
         {/* Theme */}
         <View style={styles.section}>

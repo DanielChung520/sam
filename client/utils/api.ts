@@ -20,10 +20,13 @@ function token(): string | null {
   return typeof localStorage !== 'undefined' ? localStorage.getItem('sam_token') : null;
 }
 
-// 業務員登入後的第一個 channel（多租戶隔離用）
+// 業務員目前操作的主身帳號（LINE 分身 channel key）
+// ChannelContext 切換時寫入 localStorage sam_active_channel
 function channelId(): string | null {
   if (typeof localStorage === 'undefined') return null;
   try {
+    const key = localStorage.getItem('sam_active_channel');
+    if (key) return key;
     const raw = localStorage.getItem('sam_user');
     if (!raw) return null;
     const u = JSON.parse(raw);
@@ -58,6 +61,20 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
 
   return (await res.json()) as T;
+}
+
+// ─── Channels ──────────────────────────────────────────
+
+export interface MyChannel {
+  key: string;
+  name: string;
+  avatar: string;
+  destination: string;
+}
+
+export async function getMyChannels() {
+  const json = await request<{ data: MyChannel[] }>('GET', '/channels/mine');
+  return { data: json.data ?? [] };
 }
 
 // ─── Chats ────────────────────────────────────────────

@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import contactsRouter from "./routes/contacts.js";
 import chatsRouter from "./routes/chats.js";
+import channelsRouter from "./routes/channels.js";
 import broadcastsRouter from "./routes/broadcasts.js";
 import workspaceRouter from "./routes/workspace.js";
 import webhookRouter from "./routes/webhook.js";
@@ -41,6 +42,7 @@ app.get('/api/v1/health', (req, res) => {
 // Routes
 app.use('/api/v1/contacts', contactsRouter);
 app.use('/api/v1/chats', chatsRouter);
+app.use('/api/v1/channels', channelsRouter);
 app.use('/api/v1/broadcasts', broadcastsRouter);
 app.use('/api/v1', workspaceRouter);
 app.use('/api/v1/auth', authRouter);

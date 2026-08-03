@@ -1,0 +1,48 @@
+// Channels API（業務員用）— 列出目前登入帳號名下的 LINE 分身
+//
+// 多租戶：業務員可代管多個 LINE 分身（channel），
+// 登入後以 JWT 的 businessOwnerId 查詢名下 channels，供 app 切換「主身帳號」。
+
+import { Router } from 'express';
+import jwt from 'jsonwebtoken';
+import { listChannelsByOwner } from '../data/channelRepo.js';
+import { logger } from '../agent/logger.js';
+
+const router = Router();
+
+function getBusinessOwnerId(req: any): string | null {
+  const auth = req.headers?.authorization;
+  if (typeof auth !== 'string' || !auth.startsWith('Bearer ')) return null;
+  try {
+    const payload = jwt.verify(auth.slice(7), process.env.JWT_SECRET || 'dev-secret') as {
+      businessOwnerId?: string;
+      sub?: string;
+    };
+    return payload.businessOwnerId ?? payload.sub ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// GET /api/v1/channels/mine — 目前帳號名下的 channels（不含 secret/token）
+router.get('/mine', async (req: any, res: any) => {
+  const ownerId = getBusinessOwnerId(req);
+  if (!ownerId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const channels = await listChannelsByOwner(ownerId);
+    const data = channels
+      .filter((c) => c.enabled !== false)
+      .map((c) => ({
+        key: c._key,
+        name: c.name,
+        avatar: c.avatar ?? '',
+        destination: c.destination ?? '',
+      }));
+    res.json({ data });
+  } catch (e) {
+    logger.error('channels.mine.failed', { error: String(e) });
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+export default router;

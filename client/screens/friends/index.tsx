@@ -17,6 +17,7 @@ import { ScoreBadge } from '@/components/shared/ScoreBadge';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useChannel } from '@/contexts/ChannelContext';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { getContacts } from '@/utils/api';
 
@@ -42,6 +43,7 @@ export default function FriendsScreen() {
   const [showMenu, setShowMenu] = useState(false);
   const router = useSafeRouter();
   const { colors } = useTheme();
+  const { activeChannel } = useChannel();
   const styles = useThemedStyles((c) => ({
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     header: {
@@ -57,6 +59,18 @@ export default function FriendsScreen() {
       marginBottom: 12,
     },
     headerTitle: { fontSize: 22, fontWeight: '600', color: c.text, letterSpacing: 0.2 },
+    channelBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      backgroundColor: c.primary10,
+      borderRadius: 12,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      gap: 6,
+      marginBottom: 8,
+    },
+    channelBadgeText: { fontSize: 12, fontWeight: '600', color: c.primary },
     menuBtn: {
       width: 36,
       height: 36,
@@ -204,6 +218,16 @@ export default function FriendsScreen() {
             <FontAwesome6 name="ellipsis" size={20} color={colors.text} />
           </TouchableOpacity>
         </View>
+        {activeChannel && (
+          <TouchableOpacity
+            style={styles.channelBadge}
+            onPress={() => router.push('/settings')}
+          >
+            <FontAwesome6 name="id-card" size={12} color={colors.primary} />
+            <Text style={styles.channelBadgeText}>{activeChannel.name}</Text>
+            <FontAwesome6 name="chevron-down" size={10} color={colors.primary} />
+          </TouchableOpacity>
+        )}
         <USBStatusBadge status="connected" />
 
         <View style={styles.searchContainer}>

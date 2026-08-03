@@ -16,6 +16,7 @@ import { ScoreBadge } from '@/components/shared/ScoreBadge';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useChannel } from '@/contexts/ChannelContext';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { getChats } from '@/utils/api';
 
@@ -34,6 +35,7 @@ export default function ChatsScreen() {
   const [loading, setLoading] = useState(true);
   const router = useSafeRouter();
   const { colors } = useTheme();
+  const { activeChannel } = useChannel();
   const styles = useThemedStyles((c) => ({
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     header: {
@@ -49,6 +51,18 @@ export default function ChatsScreen() {
       marginBottom: 10,
     },
     headerTitle: { fontSize: 22, fontWeight: '600', color: c.text, letterSpacing: 0.2 },
+    channelBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      backgroundColor: c.primary10,
+      borderRadius: 12,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      gap: 6,
+      marginBottom: 8,
+    },
+    channelBadgeText: { fontSize: 12, fontWeight: '600', color: c.primary },
     searchBtn: {
       width: 40,
       height: 40,
@@ -180,6 +194,16 @@ export default function ChatsScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        {activeChannel && (
+          <TouchableOpacity
+            style={styles.channelBadge}
+            onPress={() => router.push('/settings')}
+          >
+            <FontAwesome6 name="id-card" size={12} color={colors.primary} />
+            <Text style={styles.channelBadgeText}>{activeChannel.name}</Text>
+            <FontAwesome6 name="chevron-down" size={10} color={colors.primary} />
+          </TouchableOpacity>
+        )}
         <USBStatusBadge status="connected" />
       </View>
       <FlatList
