@@ -1,21 +1,20 @@
 // Chats API — 對話列表/詳情/發送（ArangoDB 真實資料）
 //
-// 多租戶：每個請求帶 channelId。資料來源：messageRepo（webhook 累積）
+// 多租戶：預設每個請求帶 channelId（x-channel-id）只回該 channel。
+// 若未帶 channelId 且帶業務員 JWT，則合併名下所有 channels 的聊天，
+// 每筆標記 channelKey/channelName，供 app 用右側色條區別主身帳號。
 
 import { Router } from 'express';
 import { listContactsByChannel } from '../data/contactRepo.js';
+import { listChannelsByOwner } from '../data/channelRepo.js';
 import { listMessages, createMessage, listLastMessagesByChannel } from '../data/messageRepo.js';
+import { getChannelId, getBusinessOwnerId } from '../lib/authJwt.js';
 import { logger } from '../agent/logger.js';
 
 const router = Router();
 
-function getChannelId(req: any): string | undefined {
-  const q = req.query?.channelId;
-  if (typeof q === 'string' && q) return q;
-  const h = req.headers?.['x-channel-id'];
-  if (typeof h === 'string' && h) return h;
-  return undefined;
-}
+// 主身帳號色條色盤（依 channel 順序輪替）
+const CHANNEL_COLORS = ['#059669', '#F97316', '#3B82F6', '#8B5CF6', '#EC4899', '#14B8A6'];
 
 function getScoreBadge(score: number): { emoji: string; label: string; color: string } {
   if (score >= 80) return { emoji: '🔥🔥', label: '高熱度', color: '#EF4444' };
@@ -30,17 +29,36 @@ function fmtTime(ts: number): string {
 
 router.get('/', async (req: any, res) => {
   const channelId = getChannelId(req);
-  if (!channelId) return res.status(400).json({ error: 'channelId required' });
+
+  // 合併模式：未指定 channel → 查名下所有 channels
+  let channelsToLoad: { key: string; name: string; color: string }[] = [];
+  if (channelId) {
+    channelsToLoad = [{ key: channelId, name: '', color: CHANNEL_COLORS[0] }];
+  } else {
+    const ownerId = getBusinessOwnerId(req);
+    if (!ownerId) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const owned = await listChannelsByOwner(ownerId);
+      channelsToLoad = owned
+        .filter((c) => c.enabled !== false)
+        .map((c, i) => ({ key: c._key, name: c.name, color: CHANNEL_COLORS[i % CHANNEL_COLORS.length] }));
+    } catch (e) {
+      logger.error('chats.ownerChannels.failed', { error: String(e) });
+      return res.status(500).json({ error: String(e) });
+    }
+  }
+
   try {
-    const [contacts, lastMsgs] = await Promise.all([
-      listContactsByChannel(channelId),
-      listLastMessagesByChannel(channelId),
-    ]);
-    const list = contacts
-      .filter((c) => lastMsgs[c.userId])
-      .map((c) => {
+    const list: Record<string, unknown>[] = [];
+    for (const ch of channelsToLoad) {
+      const [contacts, lastMsgs] = await Promise.all([
+        listContactsByChannel(ch.key),
+        listLastMessagesByChannel(ch.key),
+      ]);
+      for (const c of contacts) {
         const last = lastMsgs[c.userId];
-        return {
+        if (!last) continue;
+        list.push({
           id: c.userId,
           name: c.displayName,
           avatar: c.pictureUrl ?? '',
@@ -49,13 +67,17 @@ router.get('/', async (req: any, res) => {
           unreadCount: c.unreadCount ?? 0,
           score: c.score ?? 0,
           badge: getScoreBadge(c.score ?? 0),
-        };
-      })
-      .sort((a, b) => {
-        if (a.unreadCount > 0 && b.unreadCount === 0) return -1;
-        if (a.unreadCount === 0 && b.unreadCount > 0) return 1;
-        return 0;
-      });
+          channelKey: ch.key,
+          channelName: ch.name,
+          channelColor: ch.color,
+        });
+      }
+    }
+    list.sort((a: any, b: any) => {
+      if (a.unreadCount > 0 && b.unreadCount === 0) return -1;
+      if (a.unreadCount === 0 && b.unreadCount > 0) return 1;
+      return 0;
+    });
     res.json({ data: list });
   } catch (e) {
     logger.error('chats.list.failed', { error: String(e) });

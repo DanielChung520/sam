@@ -21,13 +21,16 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { getChats } from '@/utils/api';
 
 interface ChatItem {
-  id: number;
+  id: string;
   name: string;
   avatar: string;
   lastMessage: string;
   lastMessageTime: string;
   unreadCount: number;
   score: number;
+  channelKey?: string;
+  channelName?: string;
+  channelColor?: string;
 }
 
 export default function ChatsScreen() {
@@ -120,6 +123,14 @@ export default function ChatsScreen() {
       alignItems: 'center',
     },
     chatMessage: { fontSize: 13, color: c.textSecondary, flex: 1, marginRight: 8 },
+    channelStripe: {
+      position: 'absolute',
+      right: 0,
+      top: 12,
+      bottom: 12,
+      width: 4,
+      borderRadius: 2,
+    },
   }));
 
   const fetchChats = useCallback(async () => {
@@ -139,13 +150,16 @@ export default function ChatsScreen() {
     }, [fetchChats])
   );
 
-  const renderChatItem = ({ item }: { item: ChatItem }) => (
-    <TouchableOpacity
-      style={styles.chatCard}
-      onPress={() => router.push('/chat-detail', { contactId: item.id, contactName: item.name })}
-      activeOpacity={0.7}
-    >
-      <View style={styles.avatarContainer}>
+  const renderChatItem = ({ item }: { item: ChatItem }) => {
+    const isPrimary = item.channelKey && activeChannel && item.channelKey === activeChannel.key;
+    return (
+      <TouchableOpacity
+        style={styles.chatCard}
+        onPress={() => router.push('/chat-detail', { contactId: item.id, contactName: item.name, channelKey: item.channelKey ?? '' })}
+        activeOpacity={0.7}
+      >
+        {isPrimary && item.channelColor && <View style={[styles.channelStripe, { backgroundColor: item.channelColor }]} />}
+        <View style={styles.avatarContainer}>
         <Image source={{ uri: item.avatar }} style={styles.avatar} />
         {item.unreadCount > 0 && (
           <View style={styles.unreadBadge}>
@@ -165,6 +179,7 @@ export default function ChatsScreen() {
       </View>
     </TouchableOpacity>
   );
+  };
 
   if (loading) {
     return (

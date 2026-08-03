@@ -4,25 +4,11 @@
 // 登入後以 JWT 的 businessOwnerId 查詢名下 channels，供 app 切換「主身帳號」。
 
 import { Router } from 'express';
-import jwt from 'jsonwebtoken';
 import { listChannelsByOwner } from '../data/channelRepo.js';
+import { getBusinessOwnerId } from '../lib/authJwt.js';
 import { logger } from '../agent/logger.js';
 
 const router = Router();
-
-function getBusinessOwnerId(req: any): string | null {
-  const auth = req.headers?.authorization;
-  if (typeof auth !== 'string' || !auth.startsWith('Bearer ')) return null;
-  try {
-    const payload = jwt.verify(auth.slice(7), process.env.JWT_SECRET || 'dev-secret') as {
-      businessOwnerId?: string;
-      sub?: string;
-    };
-    return payload.businessOwnerId ?? payload.sub ?? null;
-  } catch {
-    return null;
-  }
-}
 
 // GET /api/v1/channels/mine — 目前帳號名下的 channels（不含 secret/token）
 router.get('/mine', async (req: any, res: any) => {

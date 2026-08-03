@@ -36,12 +36,18 @@ function channelId(): string | null {
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+interface RequestOptions {
+  skipChannel?: boolean;
+}
+
+async function request<T>(method: string, path: string, body?: unknown, options?: RequestOptions): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const t = token();
   if (t) headers['Authorization'] = `Bearer ${t}`;
-  const cid = channelId();
-  if (cid) headers['x-channel-id'] = cid;
+  if (!options?.skipChannel) {
+    const cid = channelId();
+    if (cid) headers['x-channel-id'] = cid;
+  }
 
   const res = await fetch(`${BASE}${path}`, {
     method,
@@ -80,36 +86,32 @@ export async function getMyChannels() {
 // ─── Chats ────────────────────────────────────────────
 
 export interface ChatItem {
-  id: number;
+  id: string;
   name: string;
   avatar: string;
   lastMessage: string;
   lastMessageTime: string;
   unreadCount: number;
   score: number;
+  channelKey?: string;
+  channelName?: string;
+  channelColor?: string;
 }
 
 export async function getChats() {
-  const json = await request<{ data: ChatItem[] }>('GET', '/chats');
-  // 置頂：AI 助理聊天室（server 端點無 id=0，client 注入維持 UX）
-  const assistant: ChatItem = {
-    id: 0,
-    name: 'AI 銷售助理',
-    avatar: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=100&h=100&fit=crop&crop=face',
-    lastMessage: '嗨！我是你的 AI 銷售助理，隨時可以幫你分析客戶、擬回覆、排程群發。',
-    lastMessageTime: '09:00',
-    unreadCount: 0,
-    score: 100,
-  };
-  return { data: [assistant, ...(json.data ?? [])] };
+  // 合併模式：不帶 channelId → server 依 JWT 合併名下所有主身帳號的聊天
+  const json = await request<{ data: ChatItem[] }>('GET', '/chats', undefined, { skipChannel: true });
+  return { data: json.data ?? [] };
 }
 
-export async function getChatDetail(contactId: string) {
-  return request<{ data: { contact: any; messages: any[] } }>('GET', `/chats/${contactId}`);
+export async function getChatDetail(contactId: string, channelKey?: string) {
+  const qs = channelKey ? `?channelKey=${encodeURIComponent(channelKey)}` : '';
+  return request<{ data: { contact: any; messages: any[] } }>('GET', `/chats/${contactId}${qs}`);
 }
 
-export async function postMessage(contactId: string, text: string) {
-  return request<{ data: any }>('POST', `/chats/${contactId}/messages`, { text });
+export async function postMessage(contactId: string, text: string, channelKey?: string) {
+  const qs = channelKey ? `?channelKey=${encodeURIComponent(channelKey)}` : '';
+  return request<{ data: any }>('POST', `/chats/${contactId}/messages${qs}`, { text });
 }
 
 // ─── Contacts ──────────────────────────────────────────

@@ -39,7 +39,7 @@ interface ContactInfo {
 }
 
 export default function ChatDetailScreen() {
-  const { contactId, contactName } = useSafeSearchParams<{ contactId: string; contactName: string }>();
+  const { contactId, contactName, channelKey } = useSafeSearchParams<{ contactId: string; contactName: string; channelKey: string }>();
   const [messages, setMessages] = useState<Message[]>([]);
   const [contact, setContact] = useState<ContactInfo | null>(null);
   const [inputText, setInputText] = useState('');
@@ -156,7 +156,7 @@ export default function ChatDetailScreen() {
     if (!contactId) return;
     try {
       setLoading(true);
-      const json = await getChatDetail(contactId);
+      const json = await getChatDetail(contactId, channelKey);
       setContact(json.data.contact);
       setMessages(json.data.messages);
     } catch (e) {
@@ -164,7 +164,7 @@ export default function ChatDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [contactId]);
+  }, [contactId, channelKey]);
 
   useFocusEffect(
     useCallback(() => {
@@ -176,7 +176,7 @@ export default function ChatDetailScreen() {
     if (!inputText.trim() || sending) return;
     setSending(true);
     try {
-      const json = await postMessage(contactId, inputText.trim());
+      const json = await postMessage(contactId, inputText.trim(), channelKey);
       setMessages((prev) => [...prev, json.data]);
       setInputText('');
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
