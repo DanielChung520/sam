@@ -17,7 +17,7 @@ import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
 import { FontAwesome6 } from '@expo/vector-icons';
-import { getChats } from '@/utils/mockApi';
+import { getChats } from '@/utils/api';
 
 interface ChatItem {
   id: number;

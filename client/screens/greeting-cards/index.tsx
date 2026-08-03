@@ -14,7 +14,7 @@ import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons';
-import { getGreetings } from '@/utils/mockApi';
+import { getGreetings } from '@/utils/api';
 
 interface Greeting {
   id: number;

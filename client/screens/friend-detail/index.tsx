@@ -16,7 +16,7 @@ import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getContactDetail } from '@/utils/mockApi';
+import { getContactDetail } from '@/utils/api';
 
 interface ContactDetail {
   id: number;
@@ -36,7 +36,7 @@ interface ContactDetail {
 }
 
 export default function FriendDetailScreen() {
-  const { contactId } = useSafeSearchParams<{ contactId: number }>();
+  const { contactId } = useSafeSearchParams<{ contactId: string }>();
   const [contact, setContact] = useState<ContactDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useSafeRouter();
@@ -185,7 +185,7 @@ export default function FriendDetailScreen() {
     if (!contactId) return;
     try {
       setLoading(true);
-      const json = await getContactDetail(Number(contactId));
+      const json = await getContactDetail(contactId);
       setContact(json.data);
     } catch (e) {
       console.error('Failed to fetch contact detail:', e);

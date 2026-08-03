@@ -15,7 +15,7 @@ import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
 import { FontAwesome6 } from '@expo/vector-icons';
-import { getBroadcasts } from '@/utils/mockApi';
+import { getBroadcasts } from '@/utils/api';
 
 interface Broadcast {
   id: number;

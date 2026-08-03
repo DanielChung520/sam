@@ -15,7 +15,7 @@ import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons';
-import { getNews } from '@/utils/mockApi';
+import { getNews } from '@/utils/api';
 
 interface NewsItem {
   id: number;

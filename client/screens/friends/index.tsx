@@ -18,7 +18,7 @@ import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
 import { FontAwesome6 } from '@expo/vector-icons';
-import { getContacts } from '@/utils/mockApi';
+import { getContacts } from '@/utils/api';
 
 interface Contact {
   id: number;

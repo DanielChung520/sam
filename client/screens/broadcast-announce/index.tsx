@@ -14,7 +14,7 @@ import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons';
-import { createBroadcast } from '@/utils/mockApi';
+import { createBroadcast } from '@/utils/api';
 
 const MAX_RECIPIENTS = 8;
 const MAX_LENGTH = 1000;

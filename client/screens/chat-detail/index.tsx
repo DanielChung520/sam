@@ -19,7 +19,7 @@ import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getChatDetail, postMessage } from '@/utils/mockApi';
+import { getChatDetail, postMessage } from '@/utils/api';
 
 interface Message {
   id: number;
@@ -39,7 +39,7 @@ interface ContactInfo {
 }
 
 export default function ChatDetailScreen() {
-  const { contactId, contactName } = useSafeSearchParams<{ contactId: number; contactName: string }>();
+  const { contactId, contactName } = useSafeSearchParams<{ contactId: string; contactName: string }>();
   const [messages, setMessages] = useState<Message[]>([]);
   const [contact, setContact] = useState<ContactInfo | null>(null);
   const [inputText, setInputText] = useState('');
@@ -156,7 +156,7 @@ export default function ChatDetailScreen() {
     if (!contactId) return;
     try {
       setLoading(true);
-      const json = await getChatDetail(Number(contactId));
+      const json = await getChatDetail(contactId);
       setContact(json.data.contact);
       setMessages(json.data.messages);
     } catch (e) {
@@ -176,7 +176,7 @@ export default function ChatDetailScreen() {
     if (!inputText.trim() || sending) return;
     setSending(true);
     try {
-      const json = await postMessage(Number(contactId), inputText.trim());
+      const json = await postMessage(contactId, inputText.trim());
       setMessages((prev) => [...prev, json.data]);
       setInputText('');
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
