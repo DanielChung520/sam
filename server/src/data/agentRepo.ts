@@ -79,6 +79,26 @@ export interface Agent {
   // Webhook（自動產生）
   webhookPath: string;
 
+  // / 指令列表 + 行為路由（Polaris 驅動）
+  slashCommands?: Array<{
+    command: string;
+    label: string;
+    description: string;
+    target: string;
+    targetType: 'skill' | 'agent';
+    enabled: boolean;
+    argHint?: string;
+  }>;
+  routing?: Array<{
+    id: string;
+    pattern: string;
+    matchType: 'keyword' | 'regex' | 'type';
+    action: 'skill' | 'agent' | 'reply';
+    target: string;
+    params: Record<string, unknown>;
+    enabled: boolean;
+  }>;
+
   createdAt: number;
   updatedAt: number;
 }
@@ -137,6 +157,9 @@ function withDefaults(raw: any): Agent {
     autoReplyMessage: raw.autoReplyMessage ?? '目前不在服務時間，我們將在營業時間盡快回覆您！',
 
     webhookPath: raw.webhookPath ?? `/webhook/agent_${raw._key}`,
+
+    slashCommands: raw.slashCommands ?? [],
+    routing: raw.routing ?? [],
 
     createdAt: raw.createdAt ?? Date.now(),
     updatedAt: raw.updatedAt ?? Date.now(),

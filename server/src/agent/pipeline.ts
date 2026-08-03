@@ -101,6 +101,12 @@ export class PolarisPipeline {
         })
       : undefined;
 
+    // Polaris 行為路由（DB 配置）：依 routing 規則決定行為，取代部分硬編碼
+    const polarisRule = await this.matchPolarisRoute(input, text);
+    if (polarisRule) {
+      return polarisRule;
+    }
+
     const intentHint = this.classifyPolarisIntent(text);
     if (intentHint === 'sirius') {
       return await this.handleDelegation(input, text, retrieved, 'sirius');
@@ -538,6 +544,40 @@ export class PolarisPipeline {
     if (siriusKeywords.some((k) => lower.includes(k))) return 'sirius';
     if (denebKeywords.some((k) => lower.includes(k))) return 'deneb';
     return null;
+  }
+
+  // Polaris 行為路由（DB 配置）：依 routing 規則決定走哪個 skill / agent / 回覆
+  private async matchPolarisRoute(
+    input: HandleMessageInput,
+    text: string,
+  ): Promise<PipelineResult | null> {
+    try {
+      const { getPolarisConfig, matchRoutingRule } = await import('./polarisRouting.js');
+      const config = await getPolarisConfig();
+      const rule = matchRoutingRule(text, config.routing);
+      if (!rule) return null;
+
+      if (rule.action === 'reply') {
+        return {
+          text: rule.target,
+          intent: { type: 'chitchat' },
+          conversationId: input.conversationId ?? input.userId,
+          state: 'idle',
+          reset: false,
+        };
+      }
+
+      // skill / agent → 走既有 handleSlash 路徑（reuse resolveSlashCommand 格式）
+      if (rule.action === 'skill') {
+        return await this.handleSlash(input, `/${rule.target} ${rule.pattern}`.trim());
+      }
+      if (rule.action === 'agent') {
+        return await this.handleSlash(input, `/${rule.target} ${text}`.trim());
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   private async handleDelegation(

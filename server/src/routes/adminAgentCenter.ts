@@ -170,7 +170,8 @@ router.patch('/agent-center/main/:id', async (req, res) => {
             autoReplyEnabled, autoReplyMessage,
             template, category, persona, prompts, enabledSkills, enabledMcpTools,
             enabledSubAgents, intentConfidenceThreshold, maxClarificationRounds,
-            enableQualityCheck, conversationTtl, historyLimit } = req.body ?? {};
+            enableQualityCheck, conversationTtl, historyLimit,
+            slashCommands, routing } = req.body ?? {};
 
     const updated = await upsertAgent({
       _key: existing._key,
@@ -198,6 +199,8 @@ router.patch('/agent-center/main/:id', async (req, res) => {
       cooldownSeconds: cooldownSeconds ?? existing.cooldownSeconds,
       autoReplyEnabled: autoReplyEnabled ?? existing.autoReplyEnabled,
       autoReplyMessage: autoReplyMessage ?? existing.autoReplyMessage,
+      slashCommands: slashCommands ?? existing.slashCommands,
+      routing: routing ?? existing.routing,
     });
 
     res.json({ data: toMainItem(updated) });
