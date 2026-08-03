@@ -336,7 +336,9 @@
             "enabled": true,
             "config": {
               "source": "LINE 圖片"
-            }
+            },
+            "inputs": "觸發：LINE 收到圖片訊息\n{ image, channelId, receivedAt }",
+            "outputs": "輸出圖片資料：\n{ imageUri, channelId, receivedAt }"
           },
           {
             "id": "ocr-2",
@@ -348,7 +350,9 @@
             "config": {
               "code": "// await saveToSeaweedFS(image, 'sam', {userId, timestamp})",
               "timeout": 10000
-            }
+            },
+            "inputs": "{ image, channelId }",
+            "outputs": "{ imageUri: SeaweedFS URI, channelId }"
           },
           {
             "id": "ocr-3",
@@ -363,7 +367,54 @@
               "maxTokens": 4096,
               "systemPrompt": "你是一個專業的圖片 OCR 助手，請仔細閱讀圖片中的所有文字內容，並完整輸出。",
               "userPrompt": "請提取此圖片中所有的文字，保持原始排版與順序。"
-            }
+            },
+            "inputs": "{ imageUri, channelId }",
+            "outputs": "{ ocr_text: 圖片全部文字 }",
+            "propsSchema": [
+              {
+                "name": "model",
+                "label": "模型",
+                "type": "select",
+                "default": "Qwen3-8B-AWQ",
+                "options": [
+                  {
+                    "label": "Qwen3-8B-AWQ（dllm 預設）",
+                    "value": "Qwen3-8B-AWQ"
+                  },
+                  {
+                    "label": "Qwen2.5-VL-7B-Instruct（視覺）",
+                    "value": "Qwen2.5-VL-7B-Instruct"
+                  }
+                ],
+                "desc": "LLM 模型。預設走 dllm（localhost:11400），視覺任務用 Qwen2.5-VL。"
+              },
+              {
+                "name": "temperature",
+                "label": "溫度",
+                "type": "number",
+                "default": 0.2,
+                "desc": "生成隨機性（0-1），越低越穩定。"
+              },
+              {
+                "name": "maxTokens",
+                "label": "最大 Token",
+                "type": "number",
+                "default": 2048,
+                "desc": "輸出長度上限。"
+              },
+              {
+                "name": "systemPrompt",
+                "label": "System Prompt",
+                "type": "textarea",
+                "desc": "系統角色與任務指示。"
+              },
+              {
+                "name": "userPrompt",
+                "label": "User Prompt",
+                "type": "textarea",
+                "desc": "使用者提示（可用 {變數} 帶入上游資料）。"
+              }
+            ]
           },
           {
             "id": "ocr-4",
@@ -378,7 +429,54 @@
               "maxTokens": 2048,
               "systemPrompt": "你是一個圖片分類專家。根據 OCR 文字判斷圖片類型，並輸出嚴格 JSON 格式。\n\n類型與輸出格式：\n1. 名片：{ \"type\": \"business_card\", \"content\": { \"name\": \"最大字為姓名\", \"title\": \"職稱\", \"company\": \"公司名稱\", \"phone\": \"手機\", \"tel\": \"公司座機\", \"email\": \"Email\" } }\n   - 注意：名字通常為圖片中最大的字，請優先判斷\n2. 賀卡：{ \"type\": \"greeting_card\", \"content\": { \"festival\": \"節慶名稱\", \"greeting\": \"祝賀語\", \"timestamp\": \"卡片時間\", \"description\": \"賀卡內容描述\" } }\n3. 問安：{ \"type\": \"daily_greeting\", \"content\": { \"period\": \"早/中/晚\", \"greeting\": \"問候語\", \"timestamp\": \"時間\", \"description\": \"問候卡內容描述\" } }\n4. 其他：{ \"type\": \"other\", \"content\": { \"category\": \"業務/其他\", \"description\": \"LLM 描述圖片內容\" } }\n\n所有輸出 JSON 必須包含頂層欄位：\"imageUri\": \"來自 SeaweedFS\", \"userAccount\": \"帳號\", \"timestamp\": \"ISO 時間\"",
               "userPrompt": "OCR 文字：{ocr_text}\n圖片 URI：{image_uri}\n帳號：{user_account}\n\n請分類並輸出 JSON。"
-            }
+            },
+            "inputs": "{ ocr_text, imageUri, channelId, receivedAt }",
+            "outputs": "{\n  type: 名片|問安卡|祝福賀卡|其他,\n  name/title/company/phone/email,\n  other_contacts{qq,line,wechat},\n  greeting_period/festival/greeting_content,\n  text\n}",
+            "propsSchema": [
+              {
+                "name": "model",
+                "label": "模型",
+                "type": "select",
+                "default": "Qwen3-8B-AWQ",
+                "options": [
+                  {
+                    "label": "Qwen3-8B-AWQ（dllm 預設）",
+                    "value": "Qwen3-8B-AWQ"
+                  },
+                  {
+                    "label": "Qwen2.5-VL-7B-Instruct（視覺）",
+                    "value": "Qwen2.5-VL-7B-Instruct"
+                  }
+                ],
+                "desc": "LLM 模型。預設走 dllm（localhost:11400），視覺任務用 Qwen2.5-VL。"
+              },
+              {
+                "name": "temperature",
+                "label": "溫度",
+                "type": "number",
+                "default": 0.2,
+                "desc": "生成隨機性（0-1），越低越穩定。"
+              },
+              {
+                "name": "maxTokens",
+                "label": "最大 Token",
+                "type": "number",
+                "default": 2048,
+                "desc": "輸出長度上限。"
+              },
+              {
+                "name": "systemPrompt",
+                "label": "System Prompt",
+                "type": "textarea",
+                "desc": "系統角色與任務指示。"
+              },
+              {
+                "name": "userPrompt",
+                "label": "User Prompt",
+                "type": "textarea",
+                "desc": "使用者提示（可用 {變數} 帶入上游資料）。"
+              }
+            ]
           },
           {
             "id": "ocr-5",
@@ -394,7 +492,9 @@
                 "重試",
                 "失敗"
               ]
-            }
+            },
+            "inputs": "{ type, content, imageUri, channelId }",
+            "outputs": "{ pass: 通過|重試|失敗 }"
           },
           {
             "id": "ocr-6",
@@ -405,7 +505,9 @@
             "enabled": true,
             "config": {
               "note": "下游技能依 type 路由"
-            }
+            },
+            "inputs": "{ type, 結構化 JSON（名片/問安/祝福/其他） }",
+            "outputs": "結構化 JSON 傳至下游技能（依 type 路由）"
           },
           {
             "id": "ocr-7",

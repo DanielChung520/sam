@@ -72,6 +72,9 @@ for (const raw of skillDefs.skills) {
       color: n.color || raw.color,
       enabled: n.enabled ?? true,
       config: n.config ?? {},
+      inputs: n.inputs,
+      outputs: n.outputs,
+      propsSchema: n.propsSchema,
     }))
   }
 }

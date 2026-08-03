@@ -11,6 +11,17 @@ export interface FlowEdgeDef {
   label?: string
 }
 
+export interface NodePropSchema {
+  name: string
+  label: string
+  type: 'string' | 'number' | 'boolean' | 'select' | 'code' | 'json' | 'textarea'
+  required?: boolean
+  placeholder?: string
+  options?: { label: string; value: string }[]
+  default?: unknown
+  desc?: string
+}
+
 export interface FlowNode {
   id: string
   type: string  // trigger, llm, condition, function, skill, storage, reply, dummy, tool, memory
@@ -20,6 +31,12 @@ export interface FlowNode {
   enabled: boolean
   pos?: { x: number; y: number }
   config?: Record<string, any>
+  /** 輸入資料描述（吃什麼 JSON/資料） */
+  inputs?: string
+  /** 輸出資料描述（吐什麼 JSON/資料） */
+  outputs?: string
+  /** 節點屬性 schema（右側屬性欄依此渲染表單） */
+  propsSchema?: NodePropSchema[]
 }
 
 const NODE_TYPES: Record<string, { label: string; color: string; icon: string }> = {
@@ -575,6 +592,7 @@ function EditPanel({
   const [label, setLabel] = useState(node.label)
   const [desc, setDesc] = useState(node.desc)
   const [enabled, setEnabled] = useState(node.enabled)
+  const [config, setConfig] = useState<Record<string, any>>(node.config ?? {})
 
   const nodeTypeDef = NODE_TYPES[node.type] ?? NODE_TYPES.dummy
 
@@ -583,7 +601,90 @@ function EditPanel({
     setLabel(node.label)
     setDesc(node.desc)
     setEnabled(node.enabled)
+    setConfig(node.config ?? {})
   }, [node.id, node.label, node.desc, node.enabled])
+
+  const setProp = (name: string, value: unknown) => {
+    setConfig((prev) => ({ ...prev, [name]: value }))
+  }
+
+  // 依 schema 型別渲染屬性表單
+  const renderProp = (p: NodePropSchema) => {
+    const val = config[p.name] ?? p.default ?? ''
+    const base = { width: '100%', fontSize: 13, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)' }
+    switch (p.type) {
+      case 'boolean':
+        return (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!val} onChange={(e) => setProp(p.name, e.target.checked)} />
+            {p.label}
+          </label>
+        )
+      case 'select':
+        return (
+          <select
+            value={String(val)}
+            onChange={(e) => setProp(p.name, e.target.value)}
+            style={{ ...base, height: 32 }}
+          >
+            {p.options?.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        )
+      case 'textarea':
+        return (
+          <textarea
+            className="form-input"
+            rows={4}
+            value={String(val)}
+            placeholder={p.placeholder}
+            onChange={(e) => setProp(p.name, e.target.value)}
+          />
+        )
+      case 'code':
+        return (
+          <textarea
+            className="form-input"
+            rows={6}
+            value={String(val)}
+            placeholder={p.placeholder}
+            onChange={(e) => setProp(p.name, e.target.value)}
+            style={{ fontFamily: 'monospace', fontSize: 12 }}
+          />
+        )
+      case 'json':
+        return (
+          <textarea
+            className="form-input"
+            rows={5}
+            value={typeof val === 'string' ? val : JSON.stringify(val ?? {}, null, 2)}
+            placeholder={p.placeholder}
+            onChange={(e) => setProp(p.name, e.target.value)}
+            style={{ fontFamily: 'monospace', fontSize: 12 }}
+          />
+        )
+      case 'number':
+        return (
+          <input
+            type="number"
+            className="form-input"
+            value={val === '' ? '' : Number(val)}
+            placeholder={p.placeholder}
+            onChange={(e) => setProp(p.name, e.target.value === '' ? undefined : Number(e.target.value))}
+          />
+        )
+      default:
+        return (
+          <input
+            className="form-input"
+            value={String(val ?? '')}
+            placeholder={p.placeholder}
+            onChange={(e) => setProp(p.name, e.target.value)}
+          />
+        )
+    }
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -652,18 +753,50 @@ function EditPanel({
           </label>
         </div>
 
-        {/* Type-specific config summary */}
-        {node.config && Object.keys(node.config).length > 0 && (
+        {/* 節點屬性表單（依 propsSchema 渲染） */}
+        {node.propsSchema && node.propsSchema.length > 0 && (
           <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-              Config
+              屬性
             </div>
-            {Object.entries(node.config).map(([key, val]) => (
-              <div key={key} style={{ marginBottom: 6, fontSize: 12 }}>
-                <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{key}: </span>
-                <span style={{ color: '#0f172a' }}>{typeof val === 'string' ? val : JSON.stringify(val)}</span>
+            {node.propsSchema.map((p) => (
+              <div key={p.name} className="form-group">
+                <label className="form-label">
+                  {p.label}
+                  {p.required && <span style={{ color: '#ef4444', marginLeft: 2 }}>*</span>}
+                </label>
+                {renderProp(p)}
+                {p.desc && (
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                    {p.desc}
+                  </div>
+                )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* 輸入資料（吃什麼 JSON） */}
+        {node.inputs && (
+          <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#059669', marginBottom: 6, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+              📥 輸入資料
+            </div>
+            <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0, color: 'var(--text)' }}>
+              {node.inputs}
+            </pre>
+          </div>
+        )}
+
+        {/* 輸出資料（吐什麼 JSON） */}
+        {node.outputs && (
+          <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#f97316', marginBottom: 6, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+              📤 輸出資料
+            </div>
+            <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0, color: 'var(--text)' }}>
+              {node.outputs}
+            </pre>
           </div>
         )}
       </div>
@@ -681,7 +814,7 @@ function EditPanel({
         </button>
         <button
           className="btn btn-primary"
-          onClick={() => onSave({ ...node, label, desc, enabled })}
+          onClick={() => onSave({ ...node, label, desc, enabled, config })}
         >
           <CheckIcon sx={{ fontSize: 16 }} /> Save
         </button>
