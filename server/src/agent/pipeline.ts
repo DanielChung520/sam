@@ -10,6 +10,8 @@ import {
 } from './slashMenu.js';
 import { findAgentById } from '../data/agentRepo.js';
 import { delegateToAgent, recordDelegation, type DelegationResult } from './agentDelegation.js';
+import { saveArtifact } from '../lib/artifactStore.js';
+import { logger } from './logger.js';
 
 export const NEW_COMMAND = '/new';
 export const NEW_COMMAND_RESPONSE = '好的，讓我們重新開始。有什麼可以幫您？';
@@ -184,8 +186,10 @@ export class PolarisPipeline {
           ],
         });
       }
+      // 結構化產出（含標題的長內容）→ 存 HTML 文件並回標題+連結
+      const artifact = await this.trySaveArtifact(input, target.name, delegated.text);
       return {
-        text: delegated.text,
+        text: artifact ?? delegated.text,
         intent: { type: 'chitchat' },
         conversationId: input.conversationId ?? input.userId,
         state: 'idle',
@@ -215,6 +219,46 @@ export class PolarisPipeline {
     }
 
     return { ...result, reset: false, slashTarget: target };
+  }
+
+  // 結構化產出 → 存 HTML 文件（SeaweedFS），回「標題 + 連結」
+  private async trySaveArtifact(
+    input: HandleMessageInput,
+    agentName: string,
+    content: string,
+  ): Promise<string | null> {
+    const trimmed = content.trim();
+    if (!trimmed || trimmed.length < 100) return null;
+
+    let title = `${agentName} 產出`;
+    let md = trimmed;
+
+    // 若 agent 回傳 { title, content } JSON → 拆出標題與內容
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === 'object' && parsed.content) {
+        title = typeof parsed.title === 'string' && parsed.title ? parsed.title : title;
+        md = String(parsed.content);
+      }
+    } catch {
+      /* 非 JSON，整段當 markdown */
+    }
+
+    // 純對話/非結構化內容不存檔
+    if (!/#{1,4}\s/.test(md) && md.length < 200) return null;
+
+    try {
+      const ref = await saveArtifact({
+        channelId: input.channelId,
+        title,
+        markdown: md,
+        ownerUserId: input.userId,
+      });
+      return `📄 ${ref.title}\n\n${ref.shareUrl}`;
+    } catch (e) {
+      logger.warn('artifact.save_failed', { channelId: input.channelId, error: String(e) });
+      return null;
+    }
   }
 
   private formatAgentPersonaContext(agent: any): string {

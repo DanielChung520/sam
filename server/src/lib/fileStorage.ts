@@ -41,22 +41,43 @@ export class LocalFsStorage implements FileStorage {
 
 export class SeaweedFsStorage implements FileStorage {
   private readonly client: SeaweedFsClient;
+  private readonly filerEndpoint: string;
 
   constructor(client?: SeaweedFsClient) {
     this.client = client ?? getSeaweedFsClient();
+    this.filerEndpoint = process.env.SEAWEEDFS_FILER_ENDPOINT ?? 'http://localhost:8888';
   }
 
+  // 優先走 Filer HTTP API（PUT/GET/DELETE /bucket/key），失敗才退回 S3 client
   async put(key: string, content: Buffer, contentType: string): Promise<{ size: number }> {
+    const url = `${this.filerEndpoint}/${this.client.bucket}/${key}`;
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: content,
+    });
+    if (res.ok || res.status === 201) {
+      return { size: content.length };
+    }
     await this.client.ensureBucket();
     const r = await this.client.putObject(key, content, contentType);
     return { size: r.size };
   }
 
   async get(key: string): Promise<{ body: Buffer; contentType: string }> {
+    const url = `${this.filerEndpoint}/${this.client.bucket}/${key}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const ab = await res.arrayBuffer();
+      return { body: Buffer.from(ab), contentType: res.headers.get('Content-Type') ?? 'application/octet-stream' };
+    }
     return this.client.getObject(key);
   }
 
   async delete(key: string): Promise<void> {
+    const url = `${this.filerEndpoint}/${this.client.bucket}/${key}`;
+    const res = await fetch(url, { method: 'DELETE' });
+    if (res.ok || res.status === 204 || res.status === 404) return;
     await this.client.deleteObject(key);
   }
 }
