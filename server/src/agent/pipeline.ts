@@ -358,8 +358,25 @@ export class PolarisPipeline {
     try {
       const store = getConversationStore();
       const convs = await store.listByUser(userId, channelId);
-      if (convs.length === 0) return;
       const latest = convs.sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      if (!latest) {
+        // / 分支提前 return 未建 conversation → 建立一個再寫狀態
+        const now = Date.now();
+        const { randomUUID } = await import('node:crypto');
+        const conv: Conversation = {
+          id: `conv_${now}_${randomUUID().slice(0, 8)}`,
+          userId,
+          channelId,
+          state: 'idle',
+          history: [],
+          context: { menuPending: state.menuPending ?? false, pendingArg: state.pendingArg },
+          createdAt: now,
+          updatedAt: now,
+          expiresAt: now + 30 * 60 * 1000,
+        };
+        await store.create(conv);
+        return;
+      }
       await store.update(latest.id, latest.channelId, {
         context: {
           ...latest.context,
