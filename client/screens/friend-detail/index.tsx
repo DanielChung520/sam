@@ -27,6 +27,7 @@ interface ContactDetail {
   nickname: string;
   honorific: string;
   salutation: string;
+  gender: string;
   phone: string;
   email: string;
   company: string;
@@ -47,6 +48,7 @@ export default function FriendDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
   const [editSalutation, setEditSalutation] = useState('');
+  const [editGender, setEditGender] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editCompany, setEditCompany] = useState('');
@@ -228,6 +230,7 @@ export default function FriendDetailScreen() {
   const openEdit = () => {
     if (!contact) return;
     setEditSalutation(contact.salutation ?? '');
+    setEditGender(contact.gender ?? '');
     setEditPhone(contact.phone ?? '');
     setEditEmail(contact.email ?? '');
     setEditCompany(contact.company ?? '');
@@ -243,6 +246,7 @@ export default function FriendDetailScreen() {
     try {
       const json = await updateContact(contactId, {
         salutation: editSalutation.trim(),
+        gender: editGender.trim(),
         phone: editPhone.trim(),
         email: editEmail.trim(),
         company: editCompany.trim(),
@@ -396,6 +400,29 @@ export default function FriendDetailScreen() {
               placeholder="如：李董、王總（用於祝賀/問安回覆）"
               placeholderTextColor={colors.textTertiary}
             />
+
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>性別</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+              {[{ v: 'male', l: '男' }, { v: 'female', l: '女' }, { v: 'other', l: '其他' }].map((g) => (
+                <TouchableOpacity
+                  key={g.v}
+                  onPress={() => setEditGender(editGender === g.v ? '' : g.v)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 10,
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: editGender === g.v ? colors.primary : 'rgba(0,0,0,0.12)',
+                    backgroundColor: editGender === g.v ? colors.primary08 : colors.surface,
+                  }}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: editGender === g.v ? colors.primary : colors.textSecondary }}>
+                    {g.l}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>電話</Text>
             <TextInput

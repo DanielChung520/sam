@@ -16,6 +16,7 @@ export interface Contact {
   nickname?: string;               // 暱稱（相容舊欄位）
   honorific?: string;              // 尊稱（相容舊欄位）
   salutation?: string;             // 稱謂（單一欄位，供祝賀/名片回覆使用）
+  gender?: string;                 // 性別（male/female）
   phone?: string;                  // 電話
   email?: string;                  // Email
   company?: string;                // 公司
@@ -100,6 +101,7 @@ export async function updateContactProfile(
     nickname?: string;
     honorific?: string;
     salutation?: string;
+    gender?: string;
     phone?: string;
     email?: string;
     company?: string;
@@ -120,6 +122,7 @@ export async function updateContactProfile(
       nickname: profile.nickname,
       honorific: profile.honorific,
       salutation: profile.salutation,
+      gender: profile.gender,
       phone: profile.phone,
       email: profile.email,
       company: profile.company,
@@ -142,6 +145,7 @@ export async function updateContactProfile(
     nickname: profile.nickname !== undefined ? profile.nickname : existing.nickname,
     honorific: profile.honorific !== undefined ? profile.honorific : existing.honorific,
     salutation: profile.salutation !== undefined ? profile.salutation : existing.salutation,
+    gender: profile.gender !== undefined ? profile.gender : existing.gender,
     phone: profile.phone !== undefined ? profile.phone : existing.phone,
     email: profile.email !== undefined ? profile.email : existing.email,
     company: profile.company !== undefined ? profile.company : existing.company,
