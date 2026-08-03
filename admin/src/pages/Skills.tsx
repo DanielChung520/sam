@@ -13,7 +13,7 @@ import AssignmentIcon from '@mui/icons-material/Assignment'
 import Switch from '@mui/material/Switch'
 import { FlowEditor, type FlowNode } from '../components/FlowEditor'
 import { get, put, patch } from '../api/client'
-import { SKILL_CATALOG, type SkillDefinition } from '../data/skill-catalog'
+import { getSkill, type SkillDefinition } from '../data/skill-catalog'
 import skillDefs from '../../skills/name-card.json'
 
 // ── Icon resolver ──
@@ -57,8 +57,6 @@ interface AgentSkill {
   parameters: Array<{ name: string; type: string; required: boolean; description: string }>;
   timeoutMs?: number;
 }
-
-const STATIC_SKILLS = SKILL_CATALOG.filter((s) => !s.id.startsWith('agent-'));
 
 // ── Flow data from name-card.json (for builtin skills that have flows) ──
 type RawSkill = (typeof skillDefs)['skills'][number]
@@ -300,10 +298,26 @@ export function Skills() {
     if (!ok) console.warn('Remote save failed; cached locally only')
   }
 
+  // 合併 server 技能與 catalog meta（icon/color/hasFlow）
+  const unifiedSkills = useMemo(() => {
+    return agentSkills.map((s) => {
+      const meta = getSkill(s.id)
+      return {
+        ...s,
+        title: meta?.title ?? s.name,
+        desc: meta?.desc ?? s.description,
+        color: meta?.color ?? '#64748b',
+        icon: meta?.icon ?? 'Chat',
+        tag: meta?.tag ?? '',
+        hasFlow: meta?.hasFlow ?? !!flowDefs[s.id],
+      }
+    })
+  }, [agentSkills])
+
   const filtered = useMemo(() => {
-    let list = STATIC_SKILLS.filter((s) => s.enabled)
+    let list = unifiedSkills
     if (filterType !== 'all') {
-      list = list.filter((s) => s.type === filterType)
+      list = list.filter((s) => (s as any).type === filterType)
     }
     if (search) {
       const q = search.toLowerCase()
@@ -311,99 +325,26 @@ export function Skills() {
         (s) =>
           s.title.toLowerCase().includes(q) ||
           s.desc.toLowerCase().includes(q) ||
-          s.tag.toLowerCase().includes(q),
+          s.name.toLowerCase().includes(q),
       )
     }
     return list
-  }, [search, filterType])
+  }, [unifiedSkills, search, filterType])
 
   const typeCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: STATIC_SKILLS.filter((s) => s.enabled).length }
-    for (const s of STATIC_SKILLS) {
-      if (s.enabled) counts[s.type] = (counts[s.type] ?? 0) + 1
+    const counts: Record<string, number> = { all: unifiedSkills.length }
+    for (const s of unifiedSkills) {
+      const t = (s as any).type ?? 'builtin'
+      counts[t] = (counts[t] ?? 0) + 1
     }
     return counts
-  }, [])
+  }, [unifiedSkills])
 
   return (
     <>
       <div className="page-header">
         <h1 className="page-title">技能目錄</h1>
-        <p className="page-subtitle">SAM Agent 可用技能 — 靜態 {STATIC_SKILLS.filter((s) => s.enabled).length} 項 / Agent {agentSkills.filter((s) => s.enabled).length} 項</p>
-      </div>
-
-      {/* Agent Skills (managed by server) */}
-      <div className="card" style={{ marginBottom: 16, padding: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700 }}>🤖 Agent Skills（server 管理，可即時開關）</h2>
-          <button
-            onClick={loadAgentSkills}
-            disabled={agentLoading}
-            style={{ padding: '5px 10px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}
-          >
-            {agentLoading ? '載入中...' : '重新整理'}
-          </button>
-        </div>
-        {agentError && (
-          <div style={{ padding: 8, background: '#FEE', borderRadius: 6, color: '#C00', fontSize: 12, marginBottom: 12 }}>
-            ⚠ {agentError}
-          </div>
-        )}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
-          {agentSkills.map((s) => (
-            <div
-              key={s.id}
-              style={{
-                padding: 12,
-                border: '1px solid var(--border)',
-                borderRadius: 8,
-                background: s.enabled ? 'var(--bg)' : 'var(--bg-disabled, #f5f5f5)',
-                opacity: s.enabled ? 1 : 0.6,
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{s.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>id: {s.id}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>{s.description}</div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11 }}>
-                    <span style={{ padding: '2px 6px', background: '#EEF', borderRadius: 4 }}>
-                      {EXECUTOR_TYPE_LABELS[s.executorType] ?? s.executorType}
-                    </span>
-                    {s.triggers.slice(0, 3).map((t) => (
-                      <span key={t} style={{ padding: '2px 6px', background: '#EFE', borderRadius: 4 }}>
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-                  {/* Action buttons */}
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                    <button
-                      className="btn btn-sm btn-secondary"
-                      onClick={() => setManifestSkill(s)}
-                      title="View manifest"
-                    >
-                      📄 Manifest
-                    </button>
-                    <button
-                      className="btn btn-sm btn-secondary"
-                      onClick={() => setTestSkill(s)}
-                      title="Test skill"
-                    >
-                      🧪 Test
-                    </button>
-                  </div>
-                </div>
-                <Switch
-                  checked={s.enabled}
-                  onChange={(e) => toggleAgentSkill(s.id, e.target.checked)}
-                  size="small"
-                  disabled={agentLoading}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+        <p className="page-subtitle">SAM Agent 可用技能 — 共 {unifiedSkills.length} 項（點卡片可編輯流程，開關即時啟停）</p>
       </div>
 
       {/* Toolbar */}
@@ -434,25 +375,59 @@ export function Skills() {
         </div>
       </div>
 
-      {/* Card view */}
+      {/* Card view（統一：server 為權威來源）*/}
       {view === 'card' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-          {filtered.map((s) => (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+          {filtered.map((s: any) => (
             <div
               key={s.id}
               className="card skill-card"
-              style={{ padding: 16, cursor: s.hasFlow ? 'pointer' : 'default' }}
-              onClick={() => openSkill(s)}
+              style={{ padding: 16, cursor: s.hasFlow ? 'pointer' : 'default', opacity: s.enabled ? 1 : 0.6 }}
+              onClick={() => s.hasFlow && openSkill(s)}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                <div style={{ color: s.color }}>{skillIcon(s)}</div>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{s.title}</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ color: s.color }}>{skillIcon(s)}</div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{s.title}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>id: {s.id}</div>
+                  </div>
+                </div>
+                <Switch
+                  checked={s.enabled}
+                  onChange={(e) => toggleAgentSkill(s.id, e.target.checked)}
+                  size="small"
+                  disabled={agentLoading}
+                />
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>{s.desc}</div>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                <span style={{ padding: '2px 8px', background: s.color + '22', color: s.color, borderRadius: 4, fontSize: 10, fontWeight: 600 }}>
-                  {s.tag}
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+                {s.tag && (
+                  <span style={{ padding: '2px 8px', background: s.color + '22', color: s.color, borderRadius: 4, fontSize: 10, fontWeight: 600 }}>
+                    {s.tag}
+                  </span>
+                )}
+                <span style={{ padding: '2px 8px', background: '#EEF', borderRadius: 4, fontSize: 10 }}>
+                  {EXECUTOR_TYPE_LABELS[s.executorType] ?? s.executorType}
                 </span>
+                {s.triggers?.slice(0, 3).map((t: string) => (
+                  <span key={t} style={{ padding: '2px 8px', background: '#EFE', borderRadius: 4, fontSize: 10 }}>
+                    {t}
+                  </span>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {s.hasFlow && (
+                  <button className="btn btn-sm btn-secondary" onClick={(e) => { e.stopPropagation(); openSkill(s) }}>
+                    🔀 流程
+                  </button>
+                )}
+                <button className="btn btn-sm btn-secondary" onClick={(e) => { e.stopPropagation(); setManifestSkill(s) }}>
+                  📄 Manifest
+                </button>
+                <button className="btn btn-sm btn-secondary" onClick={(e) => { e.stopPropagation(); setTestSkill(s) }}>
+                  🧪 Test
+                </button>
               </div>
             </div>
           ))}
