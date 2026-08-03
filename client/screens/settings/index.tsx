@@ -11,6 +11,7 @@ import { Screen } from '@/components/Screen';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme, type ThemeMode } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons';
 
@@ -30,6 +31,7 @@ export default function SettingsScreen() {
   const [personaStyle, setPersonaStyle] = useState('習慣用繁體、加「辛苦了」、常用貼圖、對長輩用敬語');
   const [providerKey] = useState('sk-sam-••••7890');
   const router = useSafeRouter();
+  const { logout } = useAuth();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = useThemedStyles((c) => ({
@@ -127,6 +129,20 @@ export default function SettingsScreen() {
     tokenActionBtnPrimary: { backgroundColor: c.primary },
     tokenActionText: { fontSize: 13, fontWeight: '600', color: c.textSecondary },
     tokenActionTextPrimary: { fontSize: 13, fontWeight: '700', color: c.textOnPrimary },
+    logoutBtn: {
+      marginHorizontal: 16,
+      marginTop: 6,
+      borderRadius: 20,
+      padding: 16,
+      alignItems: 'center',
+      backgroundColor: c.surface,
+      shadowColor: c.shadow,
+      shadowOffset: { width: 4, height: 4 },
+      shadowOpacity: 0.5,
+      shadowRadius: 6,
+      elevation: 4,
+    },
+    logoutText: { fontSize: 15, fontWeight: '700', color: c.danger },
   }));
 
   const themeLabel = themeMode === 'light' ? '淺色' : themeMode === 'dark' ? '深色' : '跟隨系統';
@@ -272,6 +288,17 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Logout */}
+        <TouchableOpacity
+          style={styles.logoutBtn}
+          onPress={() => {
+            logout();
+            router.replace('/');
+          }}
+        >
+          <Text style={styles.logoutText}>登出</Text>
+        </TouchableOpacity>
       </ScrollView>
     </Screen>
   );

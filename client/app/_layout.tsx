@@ -11,29 +11,29 @@ LogBox.ignoreLogs([
   "TurboModuleRegistry.getEnforcing(...): 'RNMapsAirModule' could not be found",
 ]);
 
-function AuthGuard() {
-  const { isAuthenticated } = useAuth();
-  return (
-    <Stack.Protected guard={isAuthenticated}>
-      <Stack.Screen name="(tabs)" />
-    </Stack.Protected>
-  );
-}
+function RootNavigator() {
+  const { isAuthenticated, isBootstrapping } = useAuth();
 
-export default function RootLayout() {
+  if (isBootstrapping) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f2f5' }}>
+        <ActivityIndicator size="large" color="#059669" />
+      </View>
+    );
+  }
+
   return (
-    <Provider>
-      <Stack
-        screenOptions={{
-          animation: 'slide_from_right',
-          gestureEnabled: true,
-          gestureDirection: 'horizontal',
-          headerShown: false,
-        }}
-      >
-        <Stack.Screen name="login" options={{ headerShown: false }} />
-        <AuthGuard />
-        <Stack.Screen name="chat-detail" options={{ headerShown: false }} />
+    <Stack
+      screenOptions={{
+        animation: 'slide_from_right',
+        gestureEnabled: true,
+        gestureDirection: 'horizontal',
+        headerShown: false,
+      }}
+    >
+      <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Protected guard={isAuthenticated}>
+        <Stack.Screen name="(tabs)" />
         <Stack.Screen name="chat-detail" options={{ headerShown: false }} />
         <Stack.Screen name="friend-detail" options={{ headerShown: false }} />
         <Stack.Screen name="broadcast-create" options={{ headerShown: false }} />
@@ -51,7 +51,15 @@ export default function RootLayout() {
         <Stack.Screen name="broadcast-regular" options={{ headerShown: false }} />
         <Stack.Screen name="broadcast-announce" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
-      </Stack>
+      </Stack.Protected>
+    </Stack>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <Provider>
+      <RootNavigator />
       <Toast />
     </Provider>
   );

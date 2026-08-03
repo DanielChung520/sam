@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { findAccountByUsername, verifyPassword, upsertAccount } from '../data/accountRepo.js';
+import { listChannelsByOwner } from '../data/channelRepo.js';
 import { logger } from '../agent/logger.js';
 
 const router = Router();
@@ -22,8 +23,11 @@ router.post('/business-login', async (req: any, res: any) => {
     if (!account.passwordHash || !verifyPassword(password, account.passwordHash)) {
       return res.status(401).json({ error: '帳號或密碼錯誤' });
     }
+    // 動態查詢該業務員名下的 channels（單一真相：channels.businessOwnerId）
+    const ownerChannels = await listChannelsByOwner(account.businessOwnerId).catch(() => []);
+    const channelIds = ownerChannels.map((c) => c._key);
     const token = jwt.sign(
-      { sub: account._key, businessOwnerId: account.businessOwnerId, channelIds: account.channelIds ?? [], role: 'business' },
+      { sub: account._key, businessOwnerId: account.businessOwnerId, channelIds, role: 'business' },
       process.env.JWT_SECRET || 'dev-secret',
       { expiresIn: '7d' }
     );
@@ -38,7 +42,7 @@ router.post('/business-login', async (req: any, res: any) => {
         phone: account.phone,
         role: account.role,
         businessOwnerId: account.businessOwnerId,
-        channelIds: account.channelIds ?? [],
+        channelIds,
         enabled: account.enabled,
         source: account.source,
         lastLoginAt: Date.now(),
@@ -54,7 +58,7 @@ router.post('/business-login', async (req: any, res: any) => {
         name: account.name,
         email: account.email,
         businessOwnerId: account.businessOwnerId,
-        channelIds: account.channelIds ?? [],
+        channelIds,
         lastLoginAt: Date.now(),
       },
     });
@@ -94,7 +98,7 @@ router.post('/login', (req: any, res: any) => {
 });
 
 // Verify token and return user
-router.get('/me', (req: any, res: any) => {
+router.get('/me', async (req: any, res: any) => {
   const auth = req.headers.authorization;
   if (!auth?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -104,13 +108,32 @@ router.get('/me', (req: any, res: any) => {
     const payload = jwt.verify(
       auth.slice(7),
       process.env.JWT_SECRET || 'dev-secret'
-    ) as { sub: string };
+    ) as { sub: string; businessOwnerId?: string; channelIds?: string[]; role?: string };
 
+    // 業務員（DB 帳號）：查 business_accounts
+    if (payload.role === 'business' || payload.businessOwnerId) {
+      const account = await findAccountByUsername(payload.sub);
+      if (!account || !account.enabled) {
+        return res.status(401).json({ error: '帳號不存在或已停用' });
+      }
+      const ownerChannels = await listChannelsByOwner(account.businessOwnerId).catch(() => []);
+      return res.json({
+        user: {
+          id: account._key,
+          name: account.name,
+          email: account.email,
+          businessOwnerId: account.businessOwnerId,
+          channelIds: ownerChannels.map((c) => c._key),
+        },
+      });
+    }
+
+    // 舊 dev flow：in-memory users
     const user = users[payload.sub];
     if (!user) return res.status(401).json({ error: 'User not found' });
 
     res.json({ user });
-  } catch {
+  } catch (e) {
     res.status(401).json({ error: 'Invalid token' });
   }
 });
