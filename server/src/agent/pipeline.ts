@@ -265,7 +265,9 @@ export class PolarisPipeline {
       });
     }
 
-    return { ...result, reset: false, slashTarget: target };
+    // main_agent 產出物也存 HTML（如 Deneb 的深度諮詢報告）
+    const artifact = await this.trySaveArtifact(input, target.name, result.text);
+    return { ...result, text: artifact ?? result.text, reset: false, slashTarget: target };
   }
 
   // 產生完整指令說明文件（markdown → HTML 存 SeaweedFS，回標題+連結）

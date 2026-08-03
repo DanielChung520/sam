@@ -17,7 +17,8 @@ import {
 
 export const LOW_CONFIDENCE_THRESHOLD = 0.6;
 
-const SLASH_COMMAND_RE = /^\/([a-zA-Z]+)\s*([\s\S]*)$/;
+// 指令名：字母/數字/連字號（web-search、file-process）或中文（網路搜尋）
+const SLASH_COMMAND_RE = /^\/([a-zA-Z0-9\u4e00-\u9fff-]+)\s*([\s\S]*)$/;
 const MENU_SHOW_RE = /^\/\s*$/;
 const MENU_CHOICE_RE = /^\s*([1-9])\s*$/;
 const SELF_INTRO_RE =

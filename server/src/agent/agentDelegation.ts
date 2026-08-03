@@ -17,6 +17,16 @@ import type { Conversation } from './types.js';
 
 export const MAX_DELEGATION_DEPTH = 3;
 
+// 統一產出格式規則：有「產出物」（文件/文章/報告/清單等）時，
+// 回傳結構化 JSON 供平台轉成 HTML 文件儲存；一般對話則回純文字。
+// 平台收到 { title, content } 會自動存成 HTML 並回傳標題 + 連結。
+export const OUTPUT_FORMAT_RULE = `## 產出格式規則
+當任務的結果是「產出物」（文件、文章、報告、分析、指南、清單等需要留存/閱讀的內容）時：
+1. 直接回傳一個 JSON 物件（不要用 markdown 包裹、不要加說明文字）：
+   {"title": "標題", "content": "完整內容（markdown 格式，段落分明，使用 # 標題分節）"}
+2. content 用 markdown：## 小節標題、- 列表、**粗體** 等，讓轉成的 HTML 文件易讀。
+3. 若不是產出物（只是回答問題、打招呼、簡短回覆），回純文字即可，不要包 JSON。`;
+
 export interface DelegationInput {
   agentName: string;
   userMessage: string;
@@ -105,6 +115,7 @@ export async function delegateToAgent(input: DelegationInput): Promise<Delegatio
     personaSection,
     input.systemContext,
     skillOutput ? `\n\n## 工具執行結果（${usedSkill}）\n${skillOutput}` : '',
+    OUTPUT_FORMAT_RULE,
   ].filter(Boolean);
   const sysPrompt = contextBlocks.join('\n\n');
 
