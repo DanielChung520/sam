@@ -264,6 +264,52 @@ Agent 回傳 { title, content(markdown) } JSON
 - ArangoDB 更新一律用 `PATCH` / `UPDATE ... WITH`，禁用 `PUT`
 - 基礎設施（ArangoDB/Qdrant/Redis/SeaweedFS/tmux/sudo）操作須確認
 
+### 10. 流程節點屬性規範（憲法級）
+
+Skills 流程編輯器（`admin/src/components/FlowEditor.tsx`）的節點，**必須依節點屬性在右側屬性欄顯示對應屬性**（參考 n8n / Dify 的節點屬性面板）。
+
+#### 10.1 設計原則
+
+- **不做流程維護**：流程不是人為在編輯器手工維護的產物，而是**由 AI 與使用者以自然語言討論生成**，或**外部導入 XML / JSON**。
+- **屬性 Schema 驅動**：每個節點 type 定義一組屬性 schema，右側屬性欄依 schema 渲染對應的表單（輸入框 / 下拉 / 代碼編輯器 / 開關）。
+- **節點 config 即屬性**：`FlowNode.config` 的欄位就是節點的屬性值，schema 描述每個欄位的型別與編輯方式。
+
+#### 10.2 節點屬性 Schema
+
+每個節點 type（`trigger` / `llm` / `condition` / `function` / `skill` / `storage` / `reply` / `memory` / `tool`）應定義：
+
+```typescript
+// 節點屬性 schema（示意）
+interface NodePropSchema {
+  name: string          // config 欄位名
+  label: string         // 屬性欄顯示名稱
+  type: 'string' | 'number' | 'boolean' | 'select' | 'code' | 'json' | 'textarea'
+  required?: boolean
+  placeholder?: string
+  options?: { label: string; value: string }[]   // select 用
+  default?: unknown
+  desc?: string         // 屬性說明（含資料格式說明）
+}
+```
+
+#### 10.3 右側屬性欄顯示規則
+
+- 節點點擊後，右側欄顯示該節點 type 對應的屬性表單（取代目前僅 Title/Description/Config 摘要的做法）。
+- 屬性欄依 schema 渲染：`string`→文字輸入、`number`→數字輸入、`boolean`→開關、`select`→下拉、`code`→程式碼編輯器、`json`→JSON 編輯器、`textarea`→多行文字。
+- **屬性說明（desc）必須描述資料格式**：如輸入欄位說明該節點吃什麼 JSON（例：`接收圖片` 節點說明 image / channelId / receivedAt），輸出節點說明吐什麼 JSON。
+- 未定義 schema 的節點維持基本編輯（Title/Description/Enabled）。
+
+#### 10.4 生成與導入
+
+- **AI 討論生成**：流程由使用者與 AI **以自然語言討論需求**（例如「幫我做一個收到圖片後辨識名片的流程」），AI 理解後依節點 type 的 schema 產出流程定義（寫入 name-card.json 或 skill_flows collection）。不經人工在編輯器逐節點維護。
+- **外部導入**：支援從 XML（n8n 風格）或 JSON 匯入流程定義，轉換為 `FlowNode[]`。
+- 流程儲存：`admin/skills/name-card.json`（定義檔）+ server `skill_flows` collection（執行時資料）。
+
+#### 10.5 輸入/輸出規格
+
+- 技能層級定義 `inputSchema` / `outputSchema`（見 `admin/src/data/skill-catalog.ts`），顯示於 FlowEditor 右側欄頂部的「📥 輸入規格 / 📤 輸出規格」面板。
+- 節點層級的屬性 desc 也應描述該節點處理的資料格式（輸入吃什麼 / 輸出吐什麼）。
+
 ## 文件索引
 
 | 文件 | 內容 |
@@ -280,6 +326,7 @@ Agent 回傳 { title, content(markdown) } JSON
 
 | 日期 | 版本 | 更新者 | 變更內容 |
 |------|------|--------|----------|
+| 2026-08-03 | 1.2.0 | Sisyphus | 新增 10. 流程節點屬性規範（憲法級）：節點屬性欄、schema 驅動、AI 生成/外部導入 XML/JSON |
 | 2026-08-03 | 1.1.0 | Sisyphus | 新增開發原則（產品思維/多租戶/產出物格式/header/module size/臨時檔/複用檢查/服務操作/安全規範）+ 文件索引 + 修改歷程 |
 | 2026-08-02 | 1.0.0 | Daniel Chung | 初始版本 |
 
