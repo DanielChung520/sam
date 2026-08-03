@@ -1,0 +1,135 @@
+{
+  "meta": {
+    "version": "1.0",
+    "description": "SAM LINE Agent 對話路由與推理引擎 — 流程圖定義",
+    "updatedAt": "2026-07-29"
+  },
+  "flow": {
+    "nodes": [
+      {
+        "id": "agent-1",
+        "type": "trigger",
+        "label": "接收 LINE 訊息",
+        "desc": "接收來自 LINE Webhook 的各種訊息：文字、圖片、語音、檔案、群聊訊息",
+        "color": "#6366f1",
+        "enabled": true,
+        "config": { "source": "LINE Webhook" }
+      },
+      {
+        "id": "agent-2",
+        "type": "condition",
+        "label": "群聊過濾",
+        "desc": "若為群組聊天，僅在有 @all 或 @bot_nickname 時回應，否則純監聽",
+        "color": "#eab308",
+        "enabled": true,
+        "config": {
+          "expression": "if (isGroupChat) { if (@mentioned) → process; else → ignore } else → process",
+          "outputs": ["開始處理", "忽略"]
+        }
+      },
+      {
+        "id": "agent-3",
+        "type": "condition",
+        "label": "內容類型路由",
+        "desc": "依訊息類型分流至對應處理管道：文字→LLM、圖片→OCR、語音→STT、檔案→確認回覆",
+        "color": "#eab308",
+        "enabled": true,
+        "config": {
+          "expression": "message.type",
+          "outputs": ["文字", "圖片", "語音", "檔案"]
+        }
+      },
+      {
+        "id": "agent-4",
+        "type": "llm",
+        "label": "意圖理解與回答",
+        "desc": "LLM 分析文字訊息意圖，結合對話歷史與 Person Token 隔離上下文，生成回覆",
+        "color": "#f97316",
+        "enabled": true,
+        "config": {
+          "model": "dllm 預設",
+          "temperature": 0.7,
+          "maxTokens": 2048,
+          "systemPrompt": "你是一個專業的 LINE OMO 業務助理。請根據用戶訊息、對話紀錄與可用工具，給出最合適的回應。若需要查詢資料或調用技能，請明確指出需要哪個工具。",
+          "userPrompt": "用戶：{user_message}\n對話歷史：{chat_history}\n\n請分析意圖並給出回應。如需工具請說明。"
+        }
+      },
+      {
+        "id": "agent-5",
+        "type": "tool",
+        "label": "工具調用",
+        "desc": "依 LLM 意圖路由調用子技能：OCR 解析名片/賀卡、知識庫查詢、CRM 資料查詢等",
+        "color": "#ef4444",
+        "enabled": true,
+        "config": {
+          "tools": ["OCR 解析", "知識庫檢索", "名片收集與回應", "回應祝賀及問安", "其他未歸類圖片解析與處理"],
+          "routing": "由 LLM 輸出決定調用哪個工具"
+        }
+      },
+      {
+        "id": "agent-6",
+        "type": "function",
+        "label": "語音轉文字 (STT)",
+        "desc": "語音訊息先轉換為文字，再送 LLM 處理",
+        "color": "#22c55e",
+        "enabled": true,
+        "config": { "code": "// await sttService.transcribe(audioUrl) => text", "timeout": 15000 }
+      },
+      {
+        "id": "agent-7",
+        "type": "reply",
+        "label": "回覆用戶",
+        "desc": "透過 LINE Messaging API 傳送 LLM 生成的回覆或處理結果",
+        "color": "#06b6d4",
+        "enabled": true,
+        "config": { "template": "{agent_response}" }
+      },
+      {
+        "id": "agent-8",
+        "type": "reply",
+        "label": "檔案接收確認",
+        "desc": "非圖片/語音的檔案訊息僅回覆已收到通知",
+        "color": "#06b6d4",
+        "enabled": true,
+        "config": { "template": "已收到您上傳的檔案，我們會盡快處理。" }
+      },
+      {
+        "id": "agent-9",
+        "type": "dummy",
+        "label": "忽略（純監聽）",
+        "desc": "群聊且未 @bot_name 時不做任何回應，僅記錄對話",
+        "color": "#94a3b8",
+        "enabled": true,
+        "config": {}
+      },
+      {
+        "id": "agent-10",
+        "type": "memory",
+        "label": "記錄對話至 ArangoDB",
+        "desc": "將對話上下文、意圖、回覆寫入 ArangoDB，以 Person Token 隔離租戶",
+        "color": "#14b8a6",
+        "enabled": true,
+        "config": {
+          "collection": "chat_history",
+          "windowSize": 20,
+          "accountIsolation": true,
+          "fields": "{\"userId\":\"{{userId}}\", \"personToken\":\"{{personToken}}\", \"message\":\"{{user_message}}\", \"response\":\"{{agent_response}}\", \"intent\":\"{{intent}}\", \"toolsUsed\":\"{{tools}}\", \"timestamp\":\"{{timestamp}}\"}"
+        }
+      }
+    ],
+    "edges": [
+      { "source": "agent-1", "target": "agent-2", "label": "" },
+      { "source": "agent-2", "target": "agent-3", "label": "開始處理" },
+      { "source": "agent-2", "target": "agent-9", "label": "忽略" },
+      { "source": "agent-3", "target": "agent-4", "label": "文字" },
+      { "source": "agent-3", "target": "agent-6", "label": "語音" },
+      { "source": "agent-3", "target": "agent-8", "label": "檔案" },
+      { "source": "agent-3", "target": "", "label": "圖片 → OCR 子流程" },
+      { "source": "agent-4", "target": "agent-5", "label": "需工具" },
+      { "source": "agent-4", "target": "agent-7", "label": "直接回答" },
+      { "source": "agent-5", "target": "agent-7", "label": "" },
+      { "source": "agent-6", "target": "agent-4", "label": "STT 完成" },
+      { "source": "agent-7", "target": "agent-10", "label": "" }
+    ]
+  }
+}

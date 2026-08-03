@@ -4,11 +4,13 @@ import { Layout } from './components/Layout'
 import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
 import { Skills } from './pages/Skills'
-import { Admins } from './pages/Admins'
+import { AgentCenter } from './pages/AgentCenter'
 import { Accounts } from './pages/Accounts'
 import { Channels } from './pages/Channels'
 import { Cards } from './pages/Cards'
-import { Agent } from './pages/Agent'
+import { Files } from './pages/Files'
+import { McpTools } from './pages/McpTools'
+import { BusinessDocs } from './pages/BusinessDocs'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('admin_token')
@@ -41,11 +43,13 @@ function App() {
         >
           <Route index element={<Dashboard />} />
           <Route path="skills" element={<Skills />} />
-          <Route path="admins" element={<Admins />} />
+          <Route path="agent-center" element={<AgentCenter />} />
           <Route path="accounts" element={<Accounts />} />
           <Route path="channels" element={<Channels />} />
           <Route path="cards" element={<Cards />} />
-          <Route path="agent" element={<Agent />} />
+          <Route path="files" element={<Files />} />
+          <Route path="mcp-tools" element={<McpTools />} />
+          <Route path="business-docs" element={<BusinessDocs />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

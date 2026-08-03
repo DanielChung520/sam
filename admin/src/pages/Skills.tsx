@@ -1,193 +1,413 @@
-import { useState, useMemo } from 'react'
-import SoapIcon from '@mui/icons-material/Soap'
+import { useState, useMemo, useEffect } from 'react'
 import ChatIcon from '@mui/icons-material/Chat'
-import CelebrationIcon from '@mui/icons-material/Celebration'
+import MenuBookIcon from '@mui/icons-material/MenuBook'
 import ImageIcon from '@mui/icons-material/Image'
-import ViewModuleIcon from '@mui/icons-material/ViewModule'
-import ViewListIcon from '@mui/icons-material/ViewList'
+import BadgeIcon from '@mui/icons-material/Badge'
+import MicIcon from '@mui/icons-material/Mic'
+import AttachFileIcon from '@mui/icons-material/AttachFile'
+import TravelExploreIcon from '@mui/icons-material/TravelExplore'
+import CelebrationIcon from '@mui/icons-material/Celebration'
+import TextSnippetIcon from '@mui/icons-material/TextSnippet'
+import ArticleIcon from '@mui/icons-material/Article'
+import AssignmentIcon from '@mui/icons-material/Assignment'
+import Switch from '@mui/material/Switch'
 import { FlowEditor, type FlowNode } from '../components/FlowEditor'
-import { get, put } from '../api/client'
+import { get, put, patch } from '../api/client'
+import { SKILL_CATALOG, type SkillDefinition } from '../data/skill-catalog'
+import skillDefs from '../../skills/name-card.json'
 
-const skillData = [
-  {
-    icon: <SoapIcon sx={{ fontSize: 22 }} />,
-    title: '名片收集與回應',
-    desc: 'LINE 名片自動辨識、存放與設定自動回覆留言。支援多種格式名片掃描與聯絡人同步。',
-    color: '#3b82f6',
-    tag: 'Recognition',
-    date: '2026-07-29',
-  },
-  {
-    icon: <ChatIcon sx={{ fontSize: 22 }} />,
-    title: '回答與聊天',
-    desc: 'AI 即時回答客戶問題，支援自然語言對話。可配置回答模板與知識庫管理。',
-    color: '#10b981',
-    tag: 'Chat',
-    date: '2026-07-28',
-  },
-  {
-    icon: <CelebrationIcon sx={{ fontSize: 22 }} />,
-    title: '回應祝賀及問安',
-    desc: '自動回覆節慶祝福、生日問候等情感交互。支援定時推送與個人化節慶語言設定。',
-    color: '#f59e0b',
-    tag: 'Greeting',
-    date: '2026-07-27',
-  },
-  {
-    icon: <ImageIcon sx={{ fontSize: 22 }} />,
-    title: '其他未歸類圖片解析與處理',
-    desc: 'AI 圖片辨識，自動分類與處理未歸檔的圖片內容。支援多種圖片格式與智能分類。',
-    color: '#8b5cf6',
-    tag: 'Image',
-    date: '2026-07-26',
-  },
-]
+// ── Icon resolver ──
+const MUI_ICONS: Record<string, React.ReactNode> = {
+  Chat: <ChatIcon sx={{ fontSize: 22 }} />,
+  MenuBook: <MenuBookIcon sx={{ fontSize: 22 }} />,
+  Image: <ImageIcon sx={{ fontSize: 22 }} />,
+  Badge: <BadgeIcon sx={{ fontSize: 22 }} />,
+  Mic: <MicIcon sx={{ fontSize: 22 }} />,
+  AttachFile: <AttachFileIcon sx={{ fontSize: 22 }} />,
+  TravelExplore: <TravelExploreIcon sx={{ fontSize: 22 }} />,
+  Celebration: <CelebrationIcon sx={{ fontSize: 22 }} />,
+  TextSnippet: <TextSnippetIcon sx={{ fontSize: 22 }} />,
+  Article: <ArticleIcon sx={{ fontSize: 22 }} />,
+  Assignment: <AssignmentIcon sx={{ fontSize: 22 }} />,
+}
 
-const cardFlowNodes: FlowNode[] = [
-  { id: '1', label: '接收名片圖片', desc: '用戶透過 LINE 發送名片照片', color: '#3b82f6', enabled: true },
-  { id: '2', label: 'AI 辨識名片內容', desc: '自動辨識姓名、電話、公司、職稱等欄位', color: '#3b82f6', enabled: true },
-  { id: '3', label: '擷取聯絡資訊', desc: '結構化提取聯絡人資料', color: '#3b82f6', enabled: true },
-  { id: '4', label: '儲存至通訊錄', desc: '自動存入 LINE 通訊錄或指定 CRM', color: '#3b82f6', enabled: true },
-  { id: '5', label: '發送回覆確認', desc: '自動回覆用戶「已儲存聯絡資訊」', color: '#3b82f6', enabled: true },
-  { id: '6', label: '同步至 CRM', desc: '選填：同步聯絡人至外部 CRM 系統', color: '#3b82f6', enabled: false },
-]
+function skillIcon(s: SkillDefinition): React.ReactNode {
+  return MUI_ICONS[s.icon] ?? <ChatIcon sx={{ fontSize: 22 }} />
+}
 
-const chatFlowNodes: FlowNode[] = [
-  { id: '1', label: '接收用戶訊息', desc: 'LINE 用戶傳送文字訊息', color: '#10b981', enabled: true },
-  { id: '2', label: '意圖理解', desc: '使用 LLM 解析訊息意圖與上下文', color: '#10b981', enabled: true },
-  { id: '3', label: '搜尋知識庫', desc: '從向量資料庫檢索相關文件', color: '#10b981', enabled: true },
-  { id: '4', label: '生成回答', desc: '整合知識庫與上下文生成回覆', color: '#10b981', enabled: true },
-  { id: '5', label: '發送訊息', desc: '透過 LINE 回覆用戶', color: '#10b981', enabled: true },
-  { id: '6', label: '記錄對話', desc: '儲存對話歷史供後續分析', color: '#10b981', enabled: false },
-]
+const TYPE_LABELS: Record<string, string> = {
+  builtin: '內建',
+  mcp: 'MCP',
+  business: '商業',
+}
 
-const greetingFlowNodes: FlowNode[] = [
-  { id: '1', label: '偵測事件', desc: '識別節慶、生日等特殊日期', color: '#f59e0b', enabled: true },
-  { id: '2', label: '匹配範本', desc: '從範本庫中選擇合適的祝賀語', color: '#f59e0b', enabled: true },
-  { id: '3', label: '個人化', desc: '替換客戶姓名與稱謂', color: '#f59e0b', enabled: true },
-  { id: '4', label: '排程發送', desc: '於最佳時間點發送訊息', color: '#f59e0b', enabled: true },
-  { id: '5', label: '追蹤回應', desc: '監控客戶是否回覆', color: '#f59e0b', enabled: false },
-]
+const EXECUTOR_TYPE_LABELS: Record<string, string> = {
+  inline: '同步',
+  taskforge: 'taskforge',
+  http: 'HTTP',
+}
 
-const imageFlowNodes: FlowNode[] = [
-  { id: '1', label: '接收圖片', desc: '用戶傳送未歸類圖片', color: '#8b5cf6', enabled: true },
-  { id: '2', label: 'AI 分類', desc: '識別圖片類型（菜單/海報/截圖...）', color: '#8b5cf6', enabled: true },
-  { id: '3', label: '擷取資訊', desc: 'OCR 或視覺理解提取內容', color: '#8b5cf6', enabled: true },
-  { id: '4', label: '結構化儲存', desc: '存入對應分類的資料夾', color: '#8b5cf6', enabled: true },
-  { id: '5', label: '回覆用戶', desc: '告知處理結果', color: '#8b5cf6', enabled: false },
-]
+interface AgentSkill {
+  id: string;
+  name: string;
+  description: string;
+  triggers: string[];
+  enabled: boolean;
+  executorType: 'inline' | 'taskforge' | 'http';
+  parameters: Array<{ name: string; type: string; required: boolean; description: string }>;
+  timeoutMs?: number;
+}
 
-const flowsByTitle: Record<string, FlowNode[]> = {
-  '名片收集與回應': cardFlowNodes,
-  '回答與聊天': chatFlowNodes,
-  '回應祝賀及問安': greetingFlowNodes,
-  '其他未歸類圖片解析與處理': imageFlowNodes,
+const STATIC_SKILLS = SKILL_CATALOG.filter((s) => !s.id.startsWith('agent-'));
+
+// ── Flow data from name-card.json (for builtin skills that have flows) ──
+type RawSkill = (typeof skillDefs)['skills'][number]
+const flowDefs: Record<string, FlowNode[]> = {}
+for (const raw of skillDefs.skills) {
+  const flow = (raw as any).flow
+  if (flow && Array.isArray(flow.nodes)) {
+    flowDefs[raw.id] = flow.nodes.map((n: any) => ({
+      id: n.id,
+      type: n.type,
+      label: n.label,
+      desc: n.desc || '',
+      color: n.color || raw.color,
+      enabled: n.enabled ?? true,
+      config: n.config ?? {},
+    }))
+  }
 }
 
 const STORAGE_PREFIX = 'sam.flow.'
 
-function loadStoredFlow(title: string): FlowNode[] | null {
+function loadStoredFlow(id: string): FlowNode[] | null {
   try {
-    const raw = localStorage.getItem(STORAGE_PREFIX + title)
+    const raw = localStorage.getItem(STORAGE_PREFIX + id)
     if (!raw) return null
     const parsed = JSON.parse(raw) as FlowNode[]
-    if (!Array.isArray(parsed)) return null
-    return parsed
-  } catch {
-    return null
-  }
+    return Array.isArray(parsed) ? parsed : null
+  } catch { return null }
 }
 
-function persistFlowLocal(title: string, nodes: FlowNode[]) {
+function persistFlowLocal(id: string, nodes: FlowNode[]) {
+  try { localStorage.setItem(STORAGE_PREFIX + id, JSON.stringify(nodes)) } catch { /* noop */ }
+}
+
+async function fetchFlow(id: string): Promise<FlowNode[] | null> {
   try {
-    localStorage.setItem(STORAGE_PREFIX + title, JSON.stringify(nodes))
-  } catch {
-    return
-  }
-}
-
-function enc(title: string): string {
-  return encodeURIComponent(title)
-}
-
-async function fetchFlow(title: string): Promise<FlowNode[] | null> {
-  try {
-    const res = await get<{ data: FlowNode[] | null }>(`/admin/skills/${enc(title)}/flow`)
+    const res = await get<{ data: FlowNode[] | null }>(`/admin/skills/${encodeURIComponent(id)}/flow`)
     return Array.isArray(res.data) ? res.data : null
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
 
-async function saveFlowRemote(title: string, nodes: FlowNode[]): Promise<boolean> {
+async function saveFlowRemote(id: string, nodes: FlowNode[]): Promise<boolean> {
   try {
-    await put(`/admin/skills/${enc(title)}/flow`, nodes)
+    await put(`/admin/skills/${encodeURIComponent(id)}/flow`, nodes)
     return true
-  } catch {
-    return false
-  }
+  } catch { return false }
 }
 
-async function getInitialFlow(title: string): Promise<FlowNode[]> {
-  const remote = await fetchFlow(title)
+async function getInitialFlow(id: string): Promise<FlowNode[]> {
+  const remote = await fetchFlow(id)
   if (remote && remote.length > 0) return remote
-  const stored = loadStoredFlow(title)
+  const stored = loadStoredFlow(id)
   if (stored && stored.length > 0) return stored
-  return flowsByTitle[title] ?? []
+  return flowDefs[id] ?? []
+}
+
+// ── Manifest Modal ──
+function ManifestModal({ skill, onClose }: { skill: AgentSkill; onClose: () => void }) {
+  const manifest = {
+    id: skill.id,
+    name: skill.name,
+    description: skill.description,
+    triggers: skill.triggers,
+    enabled: skill.enabled,
+    executor: { type: skill.executorType },
+    parameters: skill.parameters,
+    timeoutMs: skill.timeoutMs,
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ width: 560 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title">📄 {skill.name} — Manifest</h2>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <pre style={{
+          fontSize: 12, lineHeight: 1.5, overflow: 'auto', maxHeight: '60vh',
+          background: '#1e293b', color: '#e2e8f0', padding: 16, borderRadius: 8, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+        }}>
+          {JSON.stringify(manifest, null, 2)}
+        </pre>
+      </div>
+    </div>
+  )
+}
+
+// ── Test Sandbox Modal ──
+function TestSandboxModal({ skill, onClose }: { skill: AgentSkill; onClose: () => void }) {
+  const [argsText, setArgsText] = useState(() => {
+    const defaults: Record<string, string> = {}
+    for (const p of skill.parameters) {
+      if (p.default !== undefined) defaults[p.name] = String(p.default)
+    }
+    return Object.keys(defaults).length > 0 ? JSON.stringify(defaults, null, 2) : '{}'
+  })
+  const [result, setResult] = useState<{ output?: string; error?: string; ok?: boolean } | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [errMsg, setErrMsg] = useState<string | null>(null)
+
+  async function handleTest() {
+    setLoading(true)
+    setErrMsg(null)
+    setResult(null)
+    try {
+      let parsed: Record<string, unknown> = {}
+      try { parsed = JSON.parse(argsText) } catch { setErrMsg('Invalid JSON'); setLoading(false); return }
+      const res = await fetch(`/api/v1/agent/skills/${encodeURIComponent(skill.id)}/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ args: parsed }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setErrMsg(json.error ?? `HTTP ${res.status}`); return }
+      setResult(json.data.result)
+    } catch (e) {
+      setErrMsg(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ width: 600 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title">🧪 Test: {skill.name}</h2>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Arguments (JSON)</label>
+          <textarea
+            className="form-input"
+            rows={6}
+            value={argsText}
+            onChange={(e) => setArgsText(e.target.value)}
+            style={{ fontFamily: 'monospace', fontSize: 12 }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button className="btn btn-primary" onClick={handleTest} disabled={loading}>
+            {loading ? 'Executing...' : '▶ Execute'}
+          </button>
+          <button className="btn btn-secondary" onClick={() => {
+            const defaults: Record<string, string> = {}
+            for (const p of skill.parameters) {
+              if (p.default !== undefined) defaults[p.name] = String(p.default)
+            }
+            setArgsText(Object.keys(defaults).length > 0 ? JSON.stringify(defaults, null, 2) : '{}')
+          }}>
+            Reset
+          </button>
+        </div>
+
+        {errMsg && (
+          <div style={{ padding: '8px 12px', background: '#fee2e2', color: 'var(--danger)', borderRadius: 6, fontSize: 12, marginBottom: 12 }}>
+            ⚠ {errMsg}
+          </div>
+        )}
+
+        {result && (
+          <div>
+            <label className="form-label">Result</label>
+            <pre style={{
+              fontSize: 12, lineHeight: 1.5, overflow: 'auto', maxHeight: 300,
+              background: '#1e293b', color: '#e2e8f0', padding: 16, borderRadius: 8, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+            }}>
+              {result.ok !== undefined && <span style={{ color: result.ok ? '#10b981' : '#ef4444' }}>{result.ok ? '✓ OK' : '✗ FAIL'}</span>}
+              {'\n'}
+              {result.output ? `Output: ${result.output}` : ''}
+              {result.error ? `\nError: ${result.error}` : ''}
+            </pre>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export function Skills() {
   const [view, setView] = useState<'card' | 'list'>('card')
   const [search, setSearch] = useState('')
-  const [sort, setSort] = useState('date')
-  const [flowSkill, setFlowSkill] = useState<typeof skillData[0] | null>(null)
+  const [filterType, setFilterType] = useState<string>('all')
+  const [flowSkill, setFlowSkill] = useState<SkillDefinition | null>(null)
   const [flowNodes, setFlowNodes] = useState<FlowNode[]>([])
   const [flowLoading, setFlowLoading] = useState(false)
 
-  async function openSkill(s: typeof skillData[0]) {
+  const [agentSkills, setAgentSkills] = useState<AgentSkill[]>([])
+  const [agentLoading, setAgentLoading] = useState(true)
+  const [agentError, setAgentError] = useState<string | null>(null)
+
+  // manifest modal
+  const [manifestSkill, setManifestSkill] = useState<AgentSkill | null>(null)
+  // test modal
+  const [testSkill, setTestSkill] = useState<AgentSkill | null>(null)
+
+  async function loadAgentSkills() {
+    setAgentLoading(true)
+    setAgentError(null)
+    try {
+      const res = await get<{ data: AgentSkill[] }>('/agent/skills')
+      setAgentSkills(res.data ?? [])
+    } catch (e) {
+      setAgentError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setAgentLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadAgentSkills()
+  }, [])
+
+  async function toggleAgentSkill(id: string, enabled: boolean) {
+    try {
+      const res = await patch<{ data: AgentSkill }>(`/agent/skills/${encodeURIComponent(id)}`, { enabled })
+      setAgentSkills((prev) => prev.map((s) => (s.id === id ? res.data : s)))
+    } catch (e) {
+      console.error('toggle skill failed', e)
+      loadAgentSkills()
+    }
+  }
+
+  async function openSkill(s: SkillDefinition) {
+    if (!s.hasFlow) return
     setFlowSkill(s)
     setFlowLoading(true)
-    const nodes = await getInitialFlow(s.title)
+    const nodes = await getInitialFlow(s.id)
     setFlowNodes(nodes)
     setFlowLoading(false)
   }
 
   async function handleSave(nodes: FlowNode[]) {
     if (!flowSkill) return
-    persistFlowLocal(flowSkill.title, nodes)
-    const ok = await saveFlowRemote(flowSkill.title, nodes)
+    persistFlowLocal(flowSkill.id, nodes)
+    const ok = await saveFlowRemote(flowSkill.id, nodes)
     if (!ok) console.warn('Remote save failed; cached locally only')
   }
 
   const filtered = useMemo(() => {
-    const f = skillData.filter(
-      (s) =>
-        s.title.toLowerCase().includes(search.toLowerCase()) ||
-        s.tag.toLowerCase().includes(search.toLowerCase()),
-    )
-    if (sort === 'title') f.sort((a, b) => a.title.localeCompare(b.title))
-    else f.sort((a, b) => b.date.localeCompare(a.date))
-    return f
-  }, [search, sort])
+    let list = STATIC_SKILLS.filter((s) => s.enabled)
+    if (filterType !== 'all') {
+      list = list.filter((s) => s.type === filterType)
+    }
+    if (search) {
+      const q = search.toLowerCase()
+      list = list.filter(
+        (s) =>
+          s.title.toLowerCase().includes(q) ||
+          s.desc.toLowerCase().includes(q) ||
+          s.tag.toLowerCase().includes(q),
+      )
+    }
+    return list
+  }, [search, filterType])
+
+  const typeCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: STATIC_SKILLS.filter((s) => s.enabled).length }
+    for (const s of STATIC_SKILLS) {
+      if (s.enabled) counts[s.type] = (counts[s.type] ?? 0) + 1
+    }
+    return counts
+  }, [])
 
   return (
     <>
       <div className="page-header">
-        <p className="page-subtitle" style={{ marginTop: 0 }}>
-          LINE Agent 智能技能配置
-        </p>
+        <h1 className="page-title">技能目錄</h1>
+        <p className="page-subtitle">SAM Agent 可用技能 — 靜態 {STATIC_SKILLS.filter((s) => s.enabled).length} 項 / Agent {agentSkills.filter((s) => s.enabled).length} 項</p>
+      </div>
+
+      {/* Agent Skills (managed by server) */}
+      <div className="card" style={{ marginBottom: 16, padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700 }}>🤖 Agent Skills（server 管理，可即時開關）</h2>
+          <button
+            onClick={loadAgentSkills}
+            disabled={agentLoading}
+            style={{ padding: '5px 10px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}
+          >
+            {agentLoading ? '載入中...' : '重新整理'}
+          </button>
+        </div>
+        {agentError && (
+          <div style={{ padding: 8, background: '#FEE', borderRadius: 6, color: '#C00', fontSize: 12, marginBottom: 12 }}>
+            ⚠ {agentError}
+          </div>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
+          {agentSkills.map((s) => (
+            <div
+              key={s.id}
+              style={{
+                padding: 12,
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                background: s.enabled ? 'var(--bg)' : 'var(--bg-disabled, #f5f5f5)',
+                opacity: s.enabled ? 1 : 0.6,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{s.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>id: {s.id}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>{s.description}</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11 }}>
+                    <span style={{ padding: '2px 6px', background: '#EEF', borderRadius: 4 }}>
+                      {EXECUTOR_TYPE_LABELS[s.executorType] ?? s.executorType}
+                    </span>
+                    {s.triggers.slice(0, 3).map((t) => (
+                      <span key={t} style={{ padding: '2px 6px', background: '#EFE', borderRadius: 4 }}>
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                  {/* Action buttons */}
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => setManifestSkill(s)}
+                      title="View manifest"
+                    >
+                      📄 Manifest
+                    </button>
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => setTestSkill(s)}
+                      title="Test skill"
+                    >
+                      🧪 Test
+                    </button>
+                  </div>
+                </div>
+                <Switch
+                  checked={s.enabled}
+                  onChange={(e) => toggleAgentSkill(s.id, e.target.checked)}
+                  size="small"
+                  disabled={agentLoading}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Toolbar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          marginBottom: 16,
-          flexWrap: 'wrap',
-        }}
-      >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <input
           className="toolbar-search"
           placeholder="搜尋技能..."
@@ -195,165 +415,73 @@ export function Skills() {
           onChange={(e) => setSearch(e.target.value)}
           style={{ minWidth: 260, flex: 1 }}
         />
-        <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value)}
-          style={{
-            padding: '7px 12px',
-            border: '1px solid var(--border)',
-            borderRadius: 6,
-            fontSize: 13,
-            background: 'var(--bg-card)',
-            color: 'var(--text)',
-            outline: 'none',
-            cursor: 'pointer',
-          }}
-        >
-          <option value="date">By Date</option>
-          <option value="title">By Name</option>
-        </select>
-        <div
-          style={{
-            display: 'flex',
-            border: '1px solid var(--border)',
-            borderRadius: 6,
-            overflow: 'hidden',
-          }}
-        >
-          <button
-            onClick={() => setView('card')}
-            style={{
-              padding: '6px 10px',
-              border: 'none',
-              background: view === 'card' ? 'var(--bg-hover)' : 'transparent',
-              color: 'var(--text)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-            }}
-            title="Card view"
-          >
-            <ViewModuleIcon sx={{ fontSize: 18 }} />
-          </button>
-          <button
-            onClick={() => setView('list')}
-            style={{
-              padding: '6px 10px',
-              border: 'none',
-              background: view === 'list' ? 'var(--bg-hover)' : 'transparent',
-              color: 'var(--text)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              borderLeft: '1px solid var(--border)',
-            }}
-            title="List view"
-          >
-            <ViewListIcon sx={{ fontSize: 18 }} />
-          </button>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {['all', 'builtin', 'mcp', 'business'].map((t) => (
+            <button
+              key={t}
+              onClick={() => setFilterType(t)}
+              style={{
+                padding: '5px 10px', fontSize: 11, fontWeight: 600,
+                border: '1px solid var(--border)', borderRadius: 6,
+                background: filterType === t ? 'var(--bg-hover)' : 'transparent',
+                color: 'var(--text)', cursor: 'pointer',
+              }}
+            >
+              {t === 'all' ? '全部' : TYPE_LABELS[t] ?? t}
+              <span style={{ marginLeft: 4, opacity: 0.6 }}>{typeCounts[t] ?? 0}</span>
+            </button>
+          ))}
         </div>
-      </div>
-
-      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
-        {filtered.length} skill{filtered.length !== 1 ? 's' : ''}
       </div>
 
       {/* Card view */}
       {view === 'card' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
           {filtered.map((s) => (
             <div
-              key={s.title}
-              style={{
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border)',
-                borderRadius: 12,
-                overflow: 'hidden',
-                cursor: 'pointer',
-                transition: 'box-shadow 0.2s, transform 0.2s',
-              }}
+              key={s.id}
+              className="card skill-card"
+              style={{ padding: 16, cursor: s.hasFlow ? 'pointer' : 'default' }}
               onClick={() => openSkill(s)}
-              onMouseOver={(e) => {
-                e.currentTarget.style.boxShadow = '0 6px 24px rgba(0,0,0,0.08)'
-                e.currentTarget.style.transform = 'translateY(-2px)'
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.boxShadow = 'none'
-                e.currentTarget.style.transform = 'none'
-              }}
             >
-              <div style={{ height: 4, background: s.color }} />
-              <div style={{ padding: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                  <div style={{ width: 42, height: 42, borderRadius: 10, background: `${s.color}14`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {s.icon}
-                  </div>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: s.color, background: `${s.color}10`, padding: '2px 8px', borderRadius: 4, letterSpacing: '0.3px' }}>
-                    {s.tag}
-                  </span>
-                </div>
-                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, lineHeight: 1.3 }}>{s.title}</div>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>{s.desc}</div>
-                <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-secondary)' }}>
-                  <span>{s.date}</span>
-                  <span style={{ color: s.color, fontWeight: 500, fontSize: 13 }}>配置設定 →</span>
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <div style={{ color: s.color }}>{skillIcon(s)}</div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{s.title}</div>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>{s.desc}</div>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                <span style={{ padding: '2px 8px', background: s.color + '22', color: s.color, borderRadius: 4, fontSize: 10, fontWeight: 600 }}>
+                  {s.tag}
+                </span>
               </div>
             </div>
           ))}
-          {filtered.length === 0 && <div className="empty" style={{ gridColumn: '1 / -1' }}>無符合條件的技能</div>}
-        </div>
-      )}
-
-      {/* List view */}
-      {view === 'list' && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-          {filtered.map((s, i) => (
-            <div
-              key={s.title}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 14,
-                padding: '14px 20px',
-                borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none',
-                cursor: 'pointer',
-                transition: 'background 0.15s',
-              }}
-              onClick={() => openSkill(s)}
-              onMouseOver={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-              onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={{ width: 38, height: 38, borderRadius: 8, background: `${s.color}14`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {s.icon}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>{s.title}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.desc}</div>
-              </div>
-              <span style={{ fontSize: 11, fontWeight: 600, color: s.color, background: `${s.color}10`, padding: '2px 8px', borderRadius: 4 }}>{s.tag}</span>
-              <span style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{s.date}</span>
-            </div>
-          ))}
-          {filtered.length === 0 && <div className="empty">無符合條件的技能</div>}
         </div>
       )}
 
       {/* Flow editor modal */}
-      <FlowEditor
-        key={flowSkill?.title ?? 'none'}
-        open={flowSkill !== null}
-        onClose={() => setFlowSkill(null)}
-        skillTitle={flowSkill?.title || ''}
-        skillIcon={flowSkill?.icon || null}
-        skillColor={flowSkill?.color || '#3b82f6'}
-        initialNodes={flowNodes}
-        onSave={handleSave}
-      />
-      {flowLoading && (
-        <div style={{ position: 'fixed', bottom: 20, right: 20, fontSize: 12, color: 'var(--text-secondary)' }}>
-          載入流程中…
-        </div>
+      {flowSkill && (
+        <FlowEditor
+          key={flowSkill.id}
+          skillTitle={flowSkill.title}
+          skillColor={flowSkill.color}
+          skillIcon={skillIcon(flowSkill)}
+          initialNodes={flowNodes}
+          open={!!flowSkill}
+          loading={flowLoading}
+          onClose={() => setFlowSkill(null)}
+          onSave={handleSave}
+        />
+      )}
+
+      {/* Manifest modal */}
+      {manifestSkill && (
+        <ManifestModal skill={manifestSkill} onClose={() => setManifestSkill(null)} />
+      )}
+
+      {/* Test sandbox modal */}
+      {testSkill && (
+        <TestSandboxModal skill={testSkill} onClose={() => setTestSkill(null)} />
       )}
     </>
   )

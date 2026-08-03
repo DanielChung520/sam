@@ -1,21 +1,25 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import SoapIcon from '@mui/icons-material/Soap'
-import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'
 import PersonIcon from '@mui/icons-material/Person'
 import ChatIcon from '@mui/icons-material/Chat'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
 import SmartToyIcon from '@mui/icons-material/SmartToy'
+import FolderIcon from '@mui/icons-material/Folder'
+import ExtensionIcon from '@mui/icons-material/Extension'
+import LibraryBooksIcon from '@mui/icons-material/LibraryBooks'
 
 const iconSx = { fontSize: 26 }
 
 const topIcons: { icon: React.ReactNode; route: string; label: string }[] = [
-  { icon: <SoapIcon sx={iconSx} />, route: '/skills', label: 'Skills' },
-  { icon: <AdminPanelSettingsIcon sx={iconSx} />, route: '/admins', label: 'Admins' },
   { icon: <PersonIcon sx={iconSx} />, route: '/accounts', label: 'Accounts' },
   { icon: <ChatIcon sx={iconSx} />, route: '/channels', label: 'Channels' },
   { icon: <CreditCardIcon sx={iconSx} />, route: '/cards', label: 'Cards' },
-  { icon: <SmartToyIcon sx={iconSx} />, route: '/agent', label: 'Agent' },
+  { icon: <SmartToyIcon sx={iconSx} />, route: '/agent-center', label: 'Agent Center' },
+  { icon: <SoapIcon sx={iconSx} />, route: '/skills', label: 'Skills' },
+  { icon: <LibraryBooksIcon sx={iconSx} />, route: '/business-docs', label: 'Knowledge' },
+  { icon: <FolderIcon sx={iconSx} />, route: '/files', label: 'Files' },
+  { icon: <ExtensionIcon sx={iconSx} />, route: '/mcp-tools', label: 'MCP' },
 ]
 
 const menuGroups = [
@@ -23,19 +27,25 @@ const menuGroups = [
     title: 'Management',
     items: [
       { label: 'Dashboard', route: '/' },
-      { label: 'Skills', route: '/skills' },
-      { label: 'Admins', route: '/admins' },
       { label: 'Accounts', route: '/accounts' },
       { label: 'Channels', route: '/channels' },
+      { label: 'Agent Center', route: '/agent-center' },
+      { label: 'Skills', route: '/skills' },
     ],
   },
   {
     title: 'Content',
-    items: [{ label: 'Cards', route: '/cards' }],
+    items: [
+      { label: 'Cards', route: '/cards' },
+      { label: 'Knowledge', route: '/business-docs' },
+    ],
   },
   {
     title: 'System',
-    items: [{ label: 'Agent Settings', route: '/agent' }],
+    items: [
+      { label: 'Files', route: '/files' },
+      { label: 'MCP Tools', route: '/mcp-tools' },
+    ],
   },
 ]
 

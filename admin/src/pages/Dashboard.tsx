@@ -1,31 +1,65 @@
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+} from 'recharts'
+import { get } from '../api/client'
 
-const stats = [
-  { icon: '\uD83D\uDC64', value: '3', label: 'Total Admins', route: '/admins' },
-  { icon: '\uD83D\uDCF1', value: '1', label: 'LINE Channels', route: '/channels' },
-  { icon: '\uD83D\uDC65', value: '2', label: 'Accounts', route: '/accounts' },
-  { icon: '\uD83E\uDD16', value: '1', label: 'Active Agents', route: '/agent' },
-]
-
-const skills = [
-  { icon: '\uD83D\uDCCB', title: '名片收集與回應', desc: 'LINE 名片自動辨識、存放與設定自動回覆留言' },
-  { icon: '\uD83D\uDCAC', title: '回答與聊天', desc: 'AI 即時回答客戶問題，支援自然語言對話' },
-  { icon: '\uD83C\uDF89', title: '回應祝賀及問安', desc: '自動回覆節慶祝福、生日問候等情感交互' },
-  { icon: '\uD83D\uDDBC\uFE0F', title: '其他未歸類圖片解析與處理', desc: 'AI 圖片辨識，自動分類與處理未歸檔的圖片內容' },
-]
+interface MetricsSnapshot {
+  channels: { total: number; active: number }
+  skills: { total: number; enabled: number }
+  subAgents: { active: number }
+  messages24h: Array<{ hour: string; count: number }>
+  topSkills: Array<{ skillId: string; calls: number }>
+  recentErrors: Array<{ ts: string; scope: string; message: string; context?: string }>
+  generatedAt: string
+}
 
 export function Dashboard() {
   const navigate = useNavigate()
+  const [m, setM] = useState<MetricsSnapshot | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval>>()
+
+  const fetchMetrics = useCallback(async () => {
+    try {
+      const res = await get<{ data: MetricsSnapshot }>('/admin/metrics')
+      setM(res.data)
+      setError(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchMetrics()
+    pollRef.current = setInterval(fetchMetrics, 60_000)
+    return () => clearInterval(pollRef.current)
+  }, [fetchMetrics])
+
+  const statCards = [
+    { icon: '\uD83D\uDCF1', value: m ? String(m.channels.active) : '...', label: 'LINE Channels', sub: m ? `${m.channels.total} total` : '', route: '/channels' },
+    { icon: '\uD83E\uDD16', value: m ? String(m.skills.enabled) : '...', label: 'Active Skills', sub: m ? `${m.skills.total} total` : '', route: '/skills' },
+    { icon: '\u2699\uFE0F', value: m ? String(m.subAgents.active) : '...', label: 'Running Sub-Agents', route: '/sub-agents' },
+    { icon: '\uD83D\uDCCA', value: m ? String(m.messages24h.reduce((a, b) => a + b.count, 0)) : '...', label: 'Messages (24h)', sub: m ? `Last update: ${new Date(m.generatedAt).toLocaleTimeString()}` : '', route: '/agent' },
+  ]
 
   return (
     <>
       <div className="page-header">
         <h1 className="page-title">Dashboard</h1>
-        <p className="page-subtitle">Platform overview</p>
+        <p className="page-subtitle">Platform overview — auto-refreshes every 60s</p>
       </div>
 
+      {error && (
+        <div style={{ padding: '8px 16px', background: '#fee2e2', color: 'var(--danger)', borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
+          Failed to load metrics: {error}
+        </div>
+      )}
+
+      {/* Stat Cards */}
       <div className="card-grid">
-        {stats.map((s) => (
+        {statCards.map((s) => (
           <div
             key={s.label}
             className="stat-card"
@@ -35,41 +69,51 @@ export function Dashboard() {
             <div className="stat-icon">{s.icon}</div>
             <div className="stat-value">{s.value}</div>
             <div className="stat-label">{s.label}</div>
+            {s.sub && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{s.sub}</div>}
           </div>
         ))}
       </div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
-        <h2 className="section-title">Skills</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
-          {skills.map((s) => (
-            <div
-              key={s.title}
-              style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 12,
-                padding: 16,
-                border: '1px solid var(--border)',
-                borderRadius: 8,
-                cursor: 'pointer',
-                transition: 'background 0.15s',
-              }}
-              onMouseOver={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-              onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={{ fontSize: 24, lineHeight: 1 }}>{s.icon}</div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{s.title}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4 }}>{s.desc}</div>
-              </div>
-            </div>
-          ))}
+      {/* Charts Row */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+        {/* 24h Message Volume */}
+        <div className="card" style={{ flex: '1 1 380px', minWidth: 0 }}>
+          <h2 className="section-title">Messages (24h)</h2>
+          {m && m.messages24h.length > 0 ? (
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={m.messages24h}>
+                <XAxis dataKey="hour" tick={{ fontSize: 10 }} interval={2} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Bar dataKey="count" fill="#059669" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="empty" style={{ padding: 24 }}>No message data yet.</div>
+          )}
+        </div>
+
+        {/* Top Skills */}
+        <div className="card" style={{ flex: '1 1 380px', minWidth: 0 }}>
+          <h2 className="section-title">Top Skills</h2>
+          {m && m.topSkills.length > 0 ? (
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={m.topSkills} layout="vertical">
+                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="skillId" tick={{ fontSize: 10 }} width={90} />
+                <Tooltip />
+                <Bar dataKey="calls" fill="#f97316" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="empty" style={{ padding: 24 }}>No skills called yet.</div>
+          )}
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
-        <div className="card" style={{ flex: 1 }}>
+      {/* Bottom Row */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div className="card" style={{ flex: '1 1 300px' }}>
           <h2 className="section-title">Quick Actions</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[
@@ -90,7 +134,7 @@ export function Dashboard() {
           </div>
         </div>
 
-        <div className="card" style={{ flex: 1 }}>
+        <div className="card" style={{ flex: '1 1 300px' }}>
           <h2 className="section-title">System Status</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {[
@@ -105,10 +149,35 @@ export function Dashboard() {
                 <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{s.status}</span>
               </div>
             ))}
+            {m && m.recentErrors.length > 0 && (
+              <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4 }}>
+                <span className="status-dot offline" style={{ display: 'inline-block', marginRight: 6 }} />
+                {m.recentErrors.length} recent error{m.recentErrors.length > 1 ? 's' : ''}
+              </div>
+            )}
           </div>
+        </div>
+
+        {/* Recent Errors */}
+        <div className="card" style={{ flex: '1 1 300px' }}>
+          <h2 className="section-title">Recent Errors</h2>
+          {m && m.recentErrors.length > 0 ? (
+            <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+              {m.recentErrors.map((e, i) => (
+                <div key={i} className="log-entry">
+                  <span className="log-time">{new Date(e.ts).toLocaleTimeString()}</span>
+                  <span className="log-channel">{e.scope}</span>
+                  <span className="log-msg" style={{ flex: 1 }}>{e.message}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty" style={{ padding: 24 }}>No errors recorded.</div>
+          )}
         </div>
       </div>
 
+      {/* Recent Activity placeholder */}
       <div className="card">
         <h2 className="section-title">Recent Activity</h2>
         <div className="empty" style={{ padding: 24 }}>

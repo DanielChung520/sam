@@ -1,0 +1,771 @@
+{
+  "meta": {
+    "version": "1.0",
+    "description": "SAM LINE Agent 技能定義 — 節點類型 + 流程圖結構",
+    "updatedAt": "2026-07-29",
+    "note": "由 user + Sisyphus 討論產出，可作為 AI 生成 FlowEditor 初始配置的輸入"
+  },
+
+  "nodeTypes": {
+    "trigger": {
+      "label": "入口 (Trigger)",
+      "color": "#6366f1",
+      "icon": "play_arrow",
+      "desc": "流程起點，標示觸發來源：LINE 圖片 / App 掃描 / 文字訊息",
+      "config": {
+        "fields": [
+          { "key": "source", "label": "觸發來源", "type": "select", "options": ["LINE 圖片", "App 掃描", "LINE 文字", "排程"], "default": "LINE 圖片" },
+          { "key": "label", "label": "顯示名稱", "type": "text", "default": "" },
+          { "key": "desc", "label": "描述", "type": "textarea", "default": "" }
+        ]
+      }
+    },
+    "llm": {
+      "label": "LLM 處理",
+      "color": "#f97316",
+      "icon": "psychology",
+      "desc": "調用 LLM 做生成/判斷，可設定 prompt、model、temperature",
+      "config": {
+        "fields": [
+          { "key": "model", "label": "模型", "type": "select", "options": ["Qwen2.5-VL-7B-Instruct", "Qwen3-8B-AWQ", "dllm 預設"], "default": "dllm 預設" },
+          { "key": "systemPrompt", "label": "System Prompt", "type": "textarea", "default": "" },
+          { "key": "userPrompt", "label": "User Prompt", "type": "textarea", "default": "" },
+          { "key": "temperature", "label": "Temperature", "type": "range", "min": 0, "max": 2, "step": 0.1, "default": 0.7 },
+          { "key": "maxTokens", "label": "Max Tokens", "type": "number", "default": 2048 },
+          { "key": "label", "label": "顯示名稱", "type": "text", "default": "" },
+          { "key": "desc", "label": "描述", "type": "textarea", "default": "" }
+        ]
+      }
+    },
+    "condition": {
+      "label": "判斷 (Condition)",
+      "color": "#eab308",
+      "icon": "alt_route",
+      "desc": "分流邏輯：是/否、成功/失敗、分類路由",
+      "config": {
+        "fields": [
+          { "key": "expression", "label": "判斷規則", "type": "textarea", "default": "" },
+          { "key": "outputs", "label": "分支名稱", "type": "tags", "default": ["是", "否"] },
+          { "key": "label", "label": "顯示名稱", "type": "text", "default": "" },
+          { "key": "desc", "label": "描述", "type": "textarea", "default": "" }
+        ]
+      }
+    },
+    "function": {
+      "label": "程式碼 (Function)",
+      "color": "#22c55e",
+      "icon": "code",
+      "desc": "執行固定邏輯，例如資料轉換、API 呼叫、格式驗證",
+      "config": {
+        "fields": [
+          { "key": "code", "label": "程式碼", "type": "code", "language": "javascript", "default": "// 在此編寫邏輯" },
+          { "key": "timeout", "label": "Timeout (ms)", "type": "number", "default": 5000 },
+          { "key": "label", "label": "顯示名稱", "type": "text", "default": "" },
+          { "key": "desc", "label": "描述", "type": "textarea", "default": "" }
+        ]
+      }
+    },
+    "skill": {
+      "label": "子技能 (Skill)",
+      "color": "#8b5cf6",
+      "icon": "account_tree",
+      "desc": "引用另一個技能流程作為子流程",
+      "config": {
+        "fields": [
+          { "key": "skillRef", "label": "目標技能", "type": "select", "options": ["OCR 解析", "名片收集與回應", "知識庫檢索", "回應祝賀及問安", "其他未歸類圖片解析與處理"], "default": "" },
+          { "key": "label", "label": "顯示名稱", "type": "text", "default": "" },
+          { "key": "desc", "label": "描述", "type": "textarea", "default": "" }
+        ]
+      }
+    },
+    "storage": {
+      "label": "儲存 (Storage)",
+      "color": "#3b82f6",
+      "icon": "save",
+      "desc": "寫入 ArangoDB，指定 collection + 帳號隔離",
+      "config": {
+        "fields": [
+          { "key": "collection", "label": "Collection 名稱", "type": "text", "default": "" },
+          { "key": "fields", "label": "欄位對應 (JSON)", "type": "code", "language": "json", "default": "{}" },
+          { "key": "accountIsolation", "label": "帳號隔離", "type": "checkbox", "default": true },
+          { "key": "label", "label": "顯示名稱", "type": "text", "default": "" },
+          { "key": "desc", "label": "描述", "type": "textarea", "default": "" }
+        ]
+      }
+    },
+    "reply": {
+      "label": "回覆 (Reply)",
+      "color": "#06b6d4",
+      "icon": "reply",
+      "desc": "傳送 LINE 訊息，支援範本變數",
+      "config": {
+        "fields": [
+          { "key": "template", "label": "訊息範本", "type": "textarea", "default": "" },
+          { "key": "variables", "label": "可用變數", "type": "tags", "default": ["{姓氏}", "{職稱}", "{公司}", "{電話}"] },
+          { "key": "fallback", "label": "失敗時替代文字", "type": "text", "default": "" },
+          { "key": "label", "label": "顯示名稱", "type": "text", "default": "" },
+          { "key": "desc", "label": "描述", "type": "textarea", "default": "" }
+        ]
+      }
+    },
+    "dummy": {
+      "label": "佔位 (Dummy)",
+      "color": "#94a3b8",
+      "icon": "more_horiz",
+      "desc": "流程說明 / 佔位 / 註解，不執行任何邏輯",
+      "config": {
+        "fields": [
+          { "key": "label", "label": "顯示名稱", "type": "text", "default": "" },
+          { "key": "desc", "label": "備註內容", "type": "textarea", "default": "" }
+        ]
+      }
+    }
+  },
+
+  "skills": [
+    {
+      "id": "ocr",
+      "title": "OCR 解析",
+      "desc": "統一圖片入口：VL 模型解析文字 → 分類（名片/賀卡/問安/其他）+ 結構化 JSON 輸出 → 品質檢驗（最多重試 2 次）",
+      "color": "#6366f1",
+      "tag": "OCR",
+      "date": "2026-07-29",
+      "icon": "text_snippet",
+      "flow": {
+        "nodes": [
+          {
+            "id": "ocr-1",
+            "type": "trigger",
+            "label": "接收圖片",
+            "desc": "接收來自 LINE 傳圖或 App 掃描的圖片",
+            "color": "#6366f1",
+            "enabled": true,
+            "config": { "source": "LINE 圖片" }
+          },
+          {
+            "id": "ocr-2",
+            "type": "function",
+            "label": "儲存圖片至 SeaweedFS",
+            "desc": "原始圖片存入 SeaweedFS sam bucket，取得圖片 URI",
+            "color": "#22c55e",
+            "enabled": true,
+            "config": { "code": "// await saveToSeaweedFS(image, 'sam', {userId, timestamp})", "timeout": 10000 }
+          },
+          {
+            "id": "ocr-3",
+            "type": "llm",
+            "label": "VL 模型 OCR 解析",
+            "desc": "調用 Qwen2.5-VL-7B-Instruct，提取圖片中所有可見文字",
+            "color": "#f97316",
+            "enabled": true,
+            "config": {
+              "model": "Qwen2.5-VL-7B-Instruct",
+              "temperature": 0.3,
+              "maxTokens": 4096,
+              "systemPrompt": "你是一個專業的圖片 OCR 助手，請仔細閱讀圖片中的所有文字內容，並完整輸出。",
+              "userPrompt": "請提取此圖片中所有的文字，保持原始排版與順序。"
+            }
+          },
+          {
+            "id": "ocr-4",
+            "type": "llm",
+            "label": "圖片分類與結構化輸出",
+            "desc": "判斷類型並依類型輸出結構化 JSON，含 userAccount、時間、圖片 URI",
+            "color": "#f97316",
+            "enabled": true,
+            "config": {
+              "model": "dllm 預設",
+              "temperature": 0.2,
+              "maxTokens": 2048,
+              "systemPrompt": "你是一個圖片分類專家。根據 OCR 文字判斷圖片類型，並輸出嚴格 JSON 格式。\n\n類型與輸出格式：\n1. 名片：{ \"type\": \"business_card\", \"content\": { \"name\": \"最大字為姓名\", \"title\": \"職稱\", \"company\": \"公司名稱\", \"phone\": \"手機\", \"tel\": \"公司座機\", \"email\": \"Email\" } }\n   - 注意：名字通常為圖片中最大的字，請優先判斷\n2. 賀卡：{ \"type\": \"greeting_card\", \"content\": { \"festival\": \"節慶名稱\", \"greeting\": \"祝賀語\", \"timestamp\": \"卡片時間\", \"description\": \"賀卡內容描述\" } }\n3. 問安：{ \"type\": \"daily_greeting\", \"content\": { \"period\": \"早/中/晚\", \"greeting\": \"問候語\", \"timestamp\": \"時間\", \"description\": \"問候卡內容描述\" } }\n4. 其他：{ \"type\": \"other\", \"content\": { \"category\": \"業務/其他\", \"description\": \"LLM 描述圖片內容\" } }\n\n所有輸出 JSON 必須包含頂層欄位：\"imageUri\": \"來自 SeaweedFS\", \"userAccount\": \"帳號\", \"timestamp\": \"ISO 時間\"",
+              "userPrompt": "OCR 文字：{ocr_text}\n圖片 URI：{image_uri}\n帳號：{user_account}\n\n請分類並輸出 JSON。"
+            }
+          },
+          {
+            "id": "ocr-5",
+            "type": "condition",
+            "label": "品質檢驗",
+            "desc": "驗證 JSON 完整性：type 有效、content 非空。失敗可重試最多 2 次",
+            "color": "#eab308",
+            "enabled": true,
+            "config": {
+              "expression": "檢查 JSON：type in ['business_card','greeting_card','daily_greeting','other'] && content 非空 && imageUri && userAccount && timestamp",
+              "outputs": ["通過", "重試", "失敗" ]
+            }
+          },
+          {
+            "id": "ocr-6",
+            "type": "dummy",
+            "label": "輸出結構化結果",
+            "desc": "將 JSON 傳遞至下游技能（名片收集/賀卡/問安/其他）",
+            "color": "#94a3b8",
+            "enabled": true,
+            "config": { "note": "下游技能依 type 路由" }
+          },
+          {
+            "id": "ocr-7",
+            "type": "function",
+            "label": "記錄錯誤日誌",
+            "desc": "重試 2 次仍失敗時寫入 Log",
+            "color": "#22c55e",
+            "enabled": true,
+            "config": { "code": "// logError({imageUri, userAccount, retryCount, error})", "timeout": 1000 }
+          }
+        ],
+        "edges": [
+          { "source": "ocr-1", "target": "ocr-2", "label": "" },
+          { "source": "ocr-2", "target": "ocr-3", "label": "" },
+          { "source": "ocr-3", "target": "ocr-4", "label": "" },
+          { "source": "ocr-4", "target": "ocr-5", "label": "" },
+          { "source": "ocr-5", "target": "ocr-6", "label": "通過" },
+          { "source": "ocr-5", "target": "ocr-3", "label": "重試 (retryCount < 2)" },
+          { "source": "ocr-5", "target": "ocr-7", "label": "失敗 (retryCount ≥ 2)" }
+        ]
+      }
+    },
+    {
+      "id": "card-collection",
+      "title": "名片收集與回應",
+      "desc": "檢查完整性 → 保存至名片夾 → SeaweedFS 連結確認 → LINE 回覆生成 → 檢查完整度 → 回覆",
+      "color": "#3b82f6",
+      "tag": "Recognition",
+      "date": "2026-07-29",
+      "icon": "badge",
+      "flow": {
+        "nodes": [
+          {
+            "id": "card-1",
+            "type": "trigger",
+            "label": "接收 OCR 結果",
+            "desc": "從 OCR 解析技能取得已分類的 JSON 與來源標記",
+            "color": "#6366f1",
+            "enabled": true,
+            "config": { "source": "OCR 子流程" }
+          },
+          {
+            "id": "card-2",
+            "type": "condition",
+            "label": "① 檢查輸出完整性",
+            "desc": "驗證 type=business_card、content、userAccount、timestamp、imageUri",
+            "color": "#eab308",
+            "enabled": true,
+            "config": {
+              "expression": "type === 'business_card' && content.name && userAccount && timestamp && imageUri",
+              "outputs": ["通過", "不通過"]
+            }
+          },
+          {
+            "id": "card-3",
+            "type": "storage",
+            "label": "② 保存至名片夾 (ArangoDB)",
+            "desc": "將名片 JSON 寫入 business_cards collection，以 userAccount 隔離租戶",
+            "color": "#3b82f6",
+            "enabled": true,
+            "config": {
+              "collection": "business_cards",
+              "accountIsolation": true,
+              "fields": "{\"type\":\"business_card\", \"name\":\"{{content.name}}\", \"title\":\"{{content.title}}\", \"company\":\"{{content.company}}\", \"phone\":\"{{content.phone}}\", \"tel\":\"{{content.tel}}\", \"email\":\"{{content.email}}\", \"imageUri\":\"{{imageUri}}\", \"userAccount\":\"{{userAccount}}\", \"source\":\"{{source}}\", \"timestamp\":\"{{timestamp}}\"}"
+            }
+          },
+          {
+            "id": "card-4",
+            "type": "function",
+            "label": "③ SeaweedFS 連結確認",
+            "desc": "驗證 imageUri 指向的圖片在 SeaweedFS 中存在，並建立名片↔圖片關聯",
+            "color": "#22c55e",
+            "enabled": true,
+            "config": { "code": "// verifySeaweedFS(imageUri) && linkCardToImage(cardId, imageUri)", "timeout": 5000 }
+          },
+          {
+            "id": "card-5",
+            "type": "condition",
+            "label": "來源是否為 LINE？",
+            "desc": "僅來源為 LINE 傳圖時需自動回覆",
+            "color": "#eab308",
+            "enabled": true,
+            "config": { "expression": "source === 'LINE 圖片'", "outputs": ["是 (LINE)", "否 (App)"] }
+          },
+          {
+            "id": "card-6",
+            "type": "llm",
+            "label": "④ 生成感謝回覆",
+            "desc": "使用 dllm 主模型，依 {content.name}{content.title} 生成個人化感謝語",
+            "color": "#f97316",
+            "enabled": true,
+            "config": { "model": "dllm 預設", "temperature": 0.8, "maxTokens": 256, "systemPrompt": "你是專業的業務助理，請以親切專業的口吻生成一句感謝惠賜名片的回覆。", "userPrompt": "請生成一句感謝 {content.name}{content.title} 惠賜名片的回覆，語氣親切專業，不超過 50 字。" }
+          },
+          {
+            "id": "card-7",
+            "type": "condition",
+            "label": "⑤ 檢查回覆完整度",
+            "desc": "確認 LLM 有輸出有效內容（非空、長度 ≥ 5）",
+            "color": "#eab308",
+            "enabled": true,
+            "config": { "expression": "llm_output 非空且長度 ≥ 5", "outputs": ["完整", "不完整"] }
+          },
+          {
+            "id": "card-8",
+            "type": "reply",
+            "label": "⑥ 正式回覆",
+            "desc": "送出 LLM 生成的感謝語",
+            "color": "#06b6d4",
+            "enabled": true,
+            "config": { "template": "{llm_output}", "fallback": "" }
+          },
+          {
+            "id": "card-9",
+            "type": "reply",
+            "label": "⑥ Fallback 回覆",
+            "desc": "完整度檢查未過時，使用預設感謝語",
+            "color": "#06b6d4",
+            "enabled": true,
+            "config": { "template": "感謝您惠賜名片！", "fallback": "感謝您惠賜名片！" }
+          },
+          {
+            "id": "card-10",
+            "type": "function",
+            "label": "記錄錯誤日誌",
+            "desc": "OCR 輸出不完整時寫入錯誤紀錄",
+            "color": "#22c55e",
+            "enabled": true,
+            "config": { "code": "// logError({reason: 'OCR output incomplete', ocrJson, userAccount})", "timeout": 1000 }
+          },
+          {
+            "id": "card-11",
+            "type": "dummy",
+            "label": "結束 (App 掃描)",
+            "desc": "來源為 App 時儲存後不回覆",
+            "color": "#94a3b8",
+            "enabled": true,
+            "config": {}
+          }
+        ],
+        "edges": [
+          { "source": "card-1", "target": "card-2", "label": "" },
+          { "source": "card-2", "target": "card-3", "label": "通過" },
+          { "source": "card-2", "target": "card-10", "label": "不通過" },
+          { "source": "card-3", "target": "card-4", "label": "" },
+          { "source": "card-4", "target": "card-5", "label": "" },
+          { "source": "card-5", "target": "card-6", "label": "是 (LINE)" },
+          { "source": "card-5", "target": "card-11", "label": "否 (App)" },
+          { "source": "card-6", "target": "card-7", "label": "" },
+          { "source": "card-7", "target": "card-8", "label": "完整" },
+          { "source": "card-7", "target": "card-9", "label": "不完整" }
+        ]
+      }
+    },
+    {
+      "id": "knowledge-base",
+      "title": "知識庫檢索",
+      "desc": "向量化查詢 → Qdrant 語意搜尋 → LLM 生成含來源回覆。當 Agent 判斷需要查資訊時調用此技能。",
+      "color": "#10b981",
+      "tag": "RAG",
+      "date": "2026-07-29",
+      "icon": "menu_book",
+      "flow": {
+        "nodes": [
+          { "id": "kb-1", "type": "trigger", "label": "接收查詢", "desc": "從 Agent 接收需要查知識庫的文字查詢", "color": "#6366f1", "enabled": true, "config": { "source": "Agent 工具調用" } },
+          { "id": "kb-2", "type": "function", "label": "向量化查詢", "desc": "呼叫 embedding model 將查詢文字轉為向量", "color": "#22c55e", "enabled": true, "config": { "code": "// const embedding = await embed(query)", "timeout": 3000 } },
+          { "id": "kb-3", "type": "storage", "label": "Qdrant 向量搜尋", "desc": "以 query vector 在 Qdrant collection 中檢索 topK 相似片段", "color": "#3b82f6", "enabled": true, "config": { "collection": "knowledge_base", "topK": 5, "scoreThreshold": 0.7 } },
+          { "id": "kb-4", "type": "condition", "label": "檢索結果檢驗", "desc": "確認是否有分數超過門檻的有效結果", "color": "#eab308", "enabled": true, "config": { "expression": "results.length > 0 && results[0].score >= 0.7", "outputs": ["有結果", "無結果"] } },
+          { "id": "kb-5", "type": "function", "label": "組裝 Context", "desc": "將檢索到的片段依關聯度排序，組裝成 LLM context", "color": "#22c55e", "enabled": true, "config": { "code": "// const context = assembleContext(results, maxChars=4000)", "timeout": 1000 } },
+          { "id": "kb-6", "type": "llm", "label": "生成含來源回答", "desc": "LLM 根據 context 生成回答，須標註資料來源", "color": "#f97316", "enabled": true, "config": { "model": "dllm 預設", "temperature": 0.3, "maxTokens": 1024, "systemPrompt": "你是一個知識庫助手。請根據提供的參考資料回答用戶問題。必須標註資料來源。若資料不足以回答，請明確說不知道。", "userPrompt": "參考資料：{context}\n\n用戶問題：{query}\n\n請根據上述資料回答，並標註每段資訊的來源。" } },
+          { "id": "kb-7", "type": "reply", "label": "回覆查詢結果", "desc": "將 LLM 生成的回答傳回 Agent", "color": "#06b6d4", "enabled": true, "config": { "template": "{kb_response}" } },
+          { "id": "kb-8", "type": "reply", "label": "回覆無結果", "desc": "向量搜尋無匹配時，回覆未找到相關資料", "color": "#06b6d4", "enabled": true, "config": { "template": "抱歉，知識庫中未找到與此問題相關的資料。請嘗試換個方式描述，或聯繫客服取得協助。" } }
+        ],
+        "edges": [
+          { "source": "kb-1", "target": "kb-2", "label": "" },
+          { "source": "kb-2", "target": "kb-3", "label": "" },
+          { "source": "kb-3", "target": "kb-4", "label": "" },
+          { "source": "kb-4", "target": "kb-5", "label": "有結果" },
+          { "source": "kb-4", "target": "kb-8", "label": "無結果" },
+          { "source": "kb-5", "target": "kb-6", "label": "" },
+          { "source": "kb-6", "target": "kb-7", "label": "" }
+        ]
+      }
+    },
+    {
+      "id": "greeting",
+      "title": "回應祝賀及問安",
+      "desc": "接收 OCR 分類或排程觸發 → 檢查完整性 → 儲存 + SeaweedFS 連結 → 生成祝賀 → 檢查完整度 → 回覆",
+      "color": "#f59e0b",
+      "tag": "Greeting",
+      "date": "2026-07-29",
+      "icon": "celebration",
+      "flow": {
+        "nodes": [
+          {
+            "id": "greet-1",
+            "type": "trigger",
+            "label": "接收觸發事件",
+            "desc": "OCR 分類賀卡/問安結果，或排程觸發（節慶/生日）",
+            "color": "#6366f1",
+            "enabled": true,
+            "config": { "source": "OCR 子流程 / 排程" }
+          },
+          {
+            "id": "greet-2",
+            "type": "condition",
+            "label": "① 檢查完整性",
+            "desc": "驗證 OCR 輸出為 greeting_card 或 daily_greeting，含 content、imageUri、userAccount",
+            "color": "#eab308",
+            "enabled": true,
+            "config": {
+              "expression": "type in ['greeting_card','daily_greeting'] && content.festival 或 content.period 存在 && imageUri && userAccount && timestamp",
+              "outputs": ["通過", "不通過"]
+            }
+          },
+          {
+            "id": "greet-3",
+            "type": "storage",
+            "label": "② 儲存至問候資料庫",
+            "desc": "將賀卡/問安 JSON 寫入 greeting_cards collection",
+            "color": "#3b82f6",
+            "enabled": true,
+            "config": {
+              "collection": "greeting_cards",
+              "accountIsolation": true,
+              "fields": "{\"type\":\"{{type}}\", \"festival\":\"{{content.festival}}\", \"period\":\"{{content.period}}\", \"greeting\":\"{{content.greeting}}\", \"description\":\"{{content.description}}\", \"timestamp\":\"{{content.timestamp}}\", \"imageUri\":\"{{imageUri}}\", \"userAccount\":\"{{userAccount}}\", \"source\":\"{{source}}\"}"
+            }
+          },
+          {
+            "id": "greet-4",
+            "type": "function",
+            "label": "③ SeaweedFS 連結確認",
+            "desc": "若有圖片則驗證 SeaweedFS 存在並建立關聯",
+            "color": "#22c55e",
+            "enabled": true,
+            "config": { "code": "// if(imageUri) verifySeaweedFS(imageUri) && linkToRecord(greetId, imageUri)", "timeout": 5000 }
+          },
+          {
+            "id": "greet-5",
+            "type": "condition",
+            "label": "是否需要即時回覆？",
+            "desc": "OCR 來圖需要即時回覆；排程推播則設定發送時間",
+            "color": "#eab308",
+            "enabled": true,
+            "config": { "expression": "source === 'LINE 圖片' || source === 'LINE 文字'", "outputs": ["即時回覆", "排程推送"] }
+          },
+          {
+            "id": "greet-6",
+            "type": "llm",
+            "label": "④ 生成個人化祝賀",
+            "desc": "依節慶/時段與內容生成個人化祝賀語",
+            "color": "#f97316",
+            "enabled": true,
+            "config": { "model": "dllm 預設", "temperature": 0.7, "maxTokens": 512, "systemPrompt": "你是親切的業務助理，請根據節慶、時段與卡片內容，生成一句溫暖且個人化的祝賀或問候。" }
+          },
+          {
+            "id": "greet-7",
+            "type": "condition",
+            "label": "⑤ 檢查回覆完整度",
+            "desc": "確認 LLM 輸出有效內容（非空、長度 ≥ 5）",
+            "color": "#eab308",
+            "enabled": true,
+            "config": { "expression": "llm_output 非空且長度 ≥ 5", "outputs": ["完整", "不完整"] }
+          },
+          {
+            "id": "greet-8",
+            "type": "reply",
+            "label": "⑥ 發送祝賀",
+            "desc": "送出 LLM 生成的祝賀語（即時回覆）",
+            "color": "#06b6d4",
+            "enabled": true,
+            "config": { "template": "{llm_output}", "fallback": "" }
+          },
+          {
+            "id": "greet-9",
+            "type": "reply",
+            "label": "⑥ Fallback 回覆",
+            "desc": "完整度檢查未過時使用預設祝賀",
+            "color": "#06b6d4",
+            "enabled": true,
+            "config": { "template": "感謝您的祝福，也祝您一切順心！", "fallback": "感謝您的祝福，也祝您一切順心！" }
+          },
+          {
+            "id": "greet-10",
+            "type": "function",
+            "label": "記錄錯誤日誌",
+            "desc": "資料不完整時寫入錯誤紀錄",
+            "color": "#22c55e",
+            "enabled": true,
+            "config": { "code": "// logError({reason: 'greeting data incomplete', data, userAccount})", "timeout": 1000 }
+          },
+          {
+            "id": "greet-11",
+            "type": "dummy",
+            "label": "排程推送／結束",
+            "desc": "排程事件設為待推送；結束即時處理流程",
+            "color": "#94a3b8",
+            "enabled": true,
+            "config": {}
+          }
+        ],
+        "edges": [
+          { "source": "greet-1", "target": "greet-2", "label": "" },
+          { "source": "greet-2", "target": "greet-3", "label": "通過" },
+          { "source": "greet-2", "target": "greet-10", "label": "不通過" },
+          { "source": "greet-3", "target": "greet-4", "label": "" },
+          { "source": "greet-4", "target": "greet-5", "label": "" },
+          { "source": "greet-5", "target": "greet-6", "label": "即時回覆" },
+          { "source": "greet-5", "target": "greet-11", "label": "排程推送" },
+          { "source": "greet-6", "target": "greet-7", "label": "" },
+          { "source": "greet-7", "target": "greet-8", "label": "完整" },
+          { "source": "greet-7", "target": "greet-9", "label": "不完整" }
+        ]
+      }
+    },
+    {
+      "id": "image",
+      "title": "其他未歸類圖片解析與處理",
+      "desc": "接收 OCR 分類 type=other → 檢查完整性 → 儲存 + SeaweedFS → 生成回覆 → 檢查完整度 → 回覆",
+      "color": "#8b5cf6",
+      "tag": "Image",
+      "date": "2026-07-29",
+      "icon": "image",
+      "flow": {
+        "nodes": [
+          {
+            "id": "img-1",
+            "type": "trigger",
+            "label": "接收 OCR 結果",
+            "desc": "從 OCR 解析技能取得 type=other 的 JSON 與來源標記",
+            "color": "#6366f1",
+            "enabled": true,
+            "config": { "source": "OCR 子流程" }
+          },
+          {
+            "id": "img-2",
+            "type": "condition",
+            "label": "① 檢查完整性",
+            "desc": "驗證 type=other、content.category、content.description、imageUri、userAccount",
+            "color": "#eab308",
+            "enabled": true,
+            "config": {
+              "expression": "type === 'other' && content.category && content.description && imageUri && userAccount && timestamp",
+              "outputs": ["通過", "不通過"]
+            }
+          },
+          {
+            "id": "img-3",
+            "type": "storage",
+            "label": "② 儲存至未歸類資料庫",
+            "desc": "將其他圖片資訊寫入 uncategorized_images collection",
+            "color": "#3b82f6",
+            "enabled": true,
+            "config": {
+              "collection": "uncategorized_images",
+              "accountIsolation": true,
+              "fields": "{\"type\":\"other\", \"category\":\"{{content.category}}\", \"description\":\"{{content.description}}\", \"imageUri\":\"{{imageUri}}\", \"userAccount\":\"{{userAccount}}\", \"source\":\"{{source}}\", \"timestamp\":\"{{timestamp}}\"}"
+            }
+          },
+          {
+            "id": "img-4",
+            "type": "function",
+            "label": "③ SeaweedFS 連結確認",
+            "desc": "驗證 SeaweedFS 圖片存在並建立關聯",
+            "color": "#22c55e",
+            "enabled": true,
+            "config": { "code": "// verifySeaweedFS(imageUri) && linkToRecord(imgId, imageUri)", "timeout": 5000 }
+          },
+          {
+            "id": "img-5",
+            "type": "condition",
+            "label": "是否需要回覆？",
+            "desc": "LINE 來源需回覆；App 掃描純儲存",
+            "color": "#eab308",
+            "enabled": true,
+            "config": { "expression": "source === 'LINE 圖片'", "outputs": ["需回覆", "純儲存"] }
+          },
+          {
+            "id": "img-6",
+            "type": "llm",
+            "label": "④ 生成回覆說明",
+            "desc": "依分類與描述生成對用戶的說明回覆",
+            "color": "#f97316",
+            "enabled": true,
+            "config": { "model": "dllm 預設", "temperature": 0.6, "maxTokens": 256, "systemPrompt": "你是專業的業務助理，根據圖片分類與內容，簡單向用戶說明已收到並處理。", "userPrompt": "分類：{content.category}\n內容：{content.description}\n請生成一句簡短回覆告知用戶。" }
+          },
+          {
+            "id": "img-7",
+            "type": "condition",
+            "label": "⑤ 檢查回覆完整度",
+            "desc": "確認 LLM 有輸出有效內容",
+            "color": "#eab308",
+            "enabled": true,
+            "config": { "expression": "llm_output 非空且長度 ≥ 5", "outputs": ["完整", "不完整"] }
+          },
+          {
+            "id": "img-8",
+            "type": "reply",
+            "label": "⑥ 回覆用戶",
+            "desc": "送出 LLM 生成的說明回覆",
+            "color": "#06b6d4",
+            "enabled": true,
+            "config": { "template": "{llm_output}", "fallback": "" }
+          },
+          {
+            "id": "img-9",
+            "type": "reply",
+            "label": "⑥ Fallback 回覆",
+            "desc": "完整度未過時使用預設文字",
+            "color": "#06b6d4",
+            "enabled": true,
+            "config": { "template": "已收到您上傳的圖片，我們會盡快處理。", "fallback": "已收到您上傳的圖片，我們會盡快處理。" }
+          },
+          {
+            "id": "img-10",
+            "type": "function",
+            "label": "記錄錯誤日誌",
+            "desc": "資料不完整時寫入錯誤紀錄",
+            "color": "#22c55e",
+            "enabled": true,
+            "config": { "code": "// logError({reason: 'other image data incomplete', data, userAccount})", "timeout": 1000 }
+          },
+          {
+            "id": "img-11",
+            "type": "dummy",
+            "label": "結束 (純儲存)",
+            "desc": "App 掃描來源，不回覆",
+            "color": "#94a3b8",
+            "enabled": true,
+            "config": {}
+          }
+        ],
+        "edges": [
+          { "source": "img-1", "target": "img-2", "label": "" },
+          { "source": "img-2", "target": "img-3", "label": "通過" },
+          { "source": "img-2", "target": "img-10", "label": "不通過" },
+          { "source": "img-3", "target": "img-4", "label": "" },
+          { "source": "img-4", "target": "img-5", "label": "" },
+          { "source": "img-5", "target": "img-6", "label": "需回覆" },
+          { "source": "img-5", "target": "img-11", "label": "純儲存" },
+          { "source": "img-6", "target": "img-7", "label": "" },
+          { "source": "img-7", "target": "img-8", "label": "完整" },
+          { "source": "img-7", "target": "img-9", "label": "不完整" }
+        ]
+      }
+    },
+    {
+      "id": "article-reader",
+      "title": "網路文章閱讀器",
+      "desc": "接收分享的網路文章網址 → 下載網頁 → 提取內文 → LLM 摘要 → 回覆",
+      "color": "#06b6d4",
+      "tag": "READER",
+      "date": "2026-07-29",
+      "icon": "article",
+      "flow": {
+        "nodes": [
+          {
+            "id": "ar-1",
+            "type": "trigger",
+            "label": "接收文章網址",
+            "desc": "從 Agent 意圖路由接收用戶分享的網路文章 URL",
+            "color": "#6366f1",
+            "enabled": true,
+            "config": { "source": "LINE 文字" }
+          },
+          {
+            "id": "ar-2",
+            "type": "function",
+            "label": "下載網頁內容",
+            "desc": "以 HTTP GET 請求指定 URL，取得 HTML 原始碼",
+            "color": "#22c55e",
+            "enabled": true,
+            "config": { "code": "// const html = await fetch(url, { timeout: 15000 })", "timeout": 15000 }
+          },
+          {
+            "id": "ar-3",
+            "type": "condition",
+            "label": "下載成功？",
+            "desc": "檢查 HTTP 狀態碼是否為 200，內容非空",
+            "color": "#eab308",
+            "enabled": true,
+            "config": { "expression": "response.ok && html.length > 0", "outputs": ["成功", "失敗"] }
+          },
+          {
+            "id": "ar-4",
+            "type": "function",
+            "label": "提取文章內文",
+            "desc": "從 HTML 提取標題、作者、發布時間、正文（readability 演算法）",
+            "color": "#22c55e",
+            "enabled": true,
+            "config": { "code": "// const article = extractContent(html, url)", "timeout": 5000 }
+          },
+          {
+            "id": "ar-5",
+            "type": "condition",
+            "label": "提取成功？",
+            "desc": "確認有提取到文章標題與正文內容",
+            "color": "#eab308",
+            "enabled": true,
+            "config": { "expression": "article.title 非空 && article.textContent 長度 > 100", "outputs": ["成功", "失敗"] }
+          },
+          {
+            "id": "ar-6",
+            "type": "llm",
+            "label": "生成文章摘要",
+            "desc": "LLM 根據文章內文，生成 3-5 句重點摘要，以用戶語言回覆",
+            "color": "#f97316",
+            "enabled": true,
+            "config": {
+              "model": "dllm 預設",
+              "temperature": 0.3,
+              "maxTokens": 1024,
+              "systemPrompt": "你是一個專業的文章摘要助手。閱讀以下文章內容，生成 3-5 句的重點摘要，保留關鍵資訊與結論。使用與文章相同的語言回覆。",
+              "userPrompt": "標題：{article_title}\n來源：{article_url}\n\n文章內容：\n{article_text}\n\n請生成 3-5 句重點摘要，條列式呈現。"
+            }
+          },
+          {
+            "id": "ar-7",
+            "type": "reply",
+            "label": "回覆摘要結果",
+            "desc": "將 LLM 生成的摘要回傳給用戶",
+            "color": "#06b6d4",
+            "enabled": true,
+            "config": { "template": "📄 {article_title}\n\n{llm_output}\n\n🔗 {article_url}" }
+          },
+          {
+            "id": "ar-8",
+            "type": "reply",
+            "label": "回覆提取失敗",
+            "desc": "文章內容提取失敗時的回覆",
+            "color": "#06b6d4",
+            "enabled": true,
+            "config": { "template": "抱歉，無法讀取此文章內容。可能是連結無效或需要登入才能查看。", "fallback": "抱歉，無法讀取此文章內容。" }
+          },
+          {
+            "id": "ar-9",
+            "type": "reply",
+            "label": "回覆連線失敗",
+            "desc": "無法連線到目標網站時的回覆",
+            "color": "#06b6d4",
+            "enabled": true,
+            "config": { "template": "無法連線至此網站，請確認網址是否正確。", "fallback": "無法連線至此網站。" }
+          },
+          {
+            "id": "ar-10",
+            "type": "function",
+            "label": "記錄錯誤日誌",
+            "desc": "下載或提取失敗時寫入錯誤紀錄",
+            "color": "#22c55e",
+            "enabled": true,
+            "config": { "code": "// logError({url, stage: 'fetch'|'extract', error})", "timeout": 1000 }
+          }
+        ],
+        "edges": [
+          { "source": "ar-1", "target": "ar-2", "label": "" },
+          { "source": "ar-2", "target": "ar-3", "label": "" },
+          { "source": "ar-3", "target": "ar-4", "label": "成功" },
+          { "source": "ar-3", "target": "ar-9", "label": "失敗" },
+          { "source": "ar-4", "target": "ar-5", "label": "" },
+          { "source": "ar-5", "target": "ar-6", "label": "成功" },
+          { "source": "ar-5", "target": "ar-8", "label": "失敗" },
+          { "source": "ar-6", "target": "ar-7", "label": "" },
+          { "source": "ar-8", "target": "ar-10", "label": "" },
+          { "source": "ar-9", "target": "ar-10", "label": "" }
+        ]
+      }
+    }
+  ]
+}

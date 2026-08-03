@@ -29,18 +29,22 @@ async function request(method: string, path: string, body?: unknown) {
   return res.json()
 }
 
-export function get(path: string) {
-  return request('GET', path)
+export function get<T = any>(path: string): Promise<T> {
+  return request('GET', path) as Promise<T>
 }
 
-export function post(path: string, data?: unknown) {
-  return request('POST', path, data)
+export function post<T = any>(path: string, data?: unknown): Promise<T> {
+  return request('POST', path, data) as Promise<T>
 }
 
-export function put(path: string, data?: unknown) {
-  return request('PUT', path, data)
+export function patch<T = any>(path: string, data?: unknown): Promise<T> {
+  return request('PATCH', path, data) as Promise<T>
 }
 
-export function del(path: string) {
-  return request('DELETE', path)
+export function put<T = any>(path: string, data?: unknown): Promise<T> {
+  return request('PUT', path, data) as Promise<T>
+}
+
+export function del<T = any>(path: string): Promise<T> {
+  return request('DELETE', path) as Promise<T>
 }

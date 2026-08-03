@@ -5,13 +5,34 @@ import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
 import RefreshIcon from '@mui/icons-material/Refresh'
 
+export interface FlowEdgeDef {
+  source: string
+  target: string
+  label?: string
+}
+
 export interface FlowNode {
   id: string
+  type: string  // trigger, llm, condition, function, skill, storage, reply, dummy, tool, memory
   label: string
   desc: string
-  color: string
+  color?: string
   enabled: boolean
   pos?: { x: number; y: number }
+  config?: Record<string, any>
+}
+
+const NODE_TYPES: Record<string, { label: string; color: string; icon: string }> = {
+  trigger:   { label: 'Trigger',   color: '#6366f1', icon: '▶' },
+  llm:       { label: 'LLM',       color: '#f97316', icon: '🧠' },
+  condition: { label: '判斷',      color: '#eab308', icon: '◇' },
+  function:  { label: 'Function',  color: '#22c55e', icon: 'ƒ' },
+  skill:     { label: '子技能',    color: '#8b5cf6', icon: '◎' },
+  storage:   { label: 'Storage',   color: '#3b82f6', icon: '💾' },
+  reply:     { label: 'Reply',     color: '#06b6d4', icon: '↩' },
+  dummy:     { label: '佔位',      color: '#94a3b8', icon: '…' },
+  tool:      { label: '工具',      color: '#ef4444', icon: '🔧' },
+  memory:    { label: '記憶',      color: '#14b8a6', icon: '📝' },
 }
 
 interface FlowEditorProps {
@@ -21,7 +42,8 @@ interface FlowEditorProps {
   skillIcon: React.ReactNode
   skillColor: string
   initialNodes: FlowNode[]
-  onSave: (nodes: FlowNode[]) => void
+  initialEdges?: FlowEdgeDef[]
+  onSave: (nodes: FlowNode[], edges?: FlowEdgeDef[]) => void
 }
 
 const NODE_WIDTH = 240
@@ -45,6 +67,7 @@ export function FlowEditor({
   skillIcon,
   skillColor,
   initialNodes,
+  initialEdges,
   onSave,
 }: FlowEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -55,6 +78,21 @@ export function FlowEditor({
   useEffect(() => {
     setNodes(initialNodes)
   }, [initialNodes])
+
+  function buildEdges(ns: FlowNode[]): { id: string; source: string; target: string }[] {
+    if (initialEdges && initialEdges.length > 0) {
+      return initialEdges.map((e, i) => ({
+        id: `edge-${e.source}-${e.target}-${i}`,
+        source: e.source,
+        target: e.target,
+      }))
+    }
+    return ns.slice(0, -1).map((_, i) => ({
+      id: `edge-${i}`,
+      source: ns[i].id,
+      target: ns[i + 1].id,
+    }))
+  }
 
   // Sync G6 → React state when nodes change externally
   useEffect(() => {
@@ -67,6 +105,7 @@ export function FlowEditor({
           desc: n.desc,
           color: n.color,
           enabled: n.enabled,
+          type: n.type,
           step: i + 1,
           skillColor,
         },
@@ -75,11 +114,7 @@ export function FlowEditor({
           y: n.pos?.y ?? NODE_Y,
         },
       })),
-      edges: nodes.slice(0, -1).map((_, i) => ({
-        id: `edge-${i}`,
-        source: nodes[i].id,
-        target: nodes[i + 1].id,
-      })),
+      edges: buildEdges(nodes),
     })
     graphRef.current.draw()
     setTimeout(() => {
@@ -89,7 +124,7 @@ export function FlowEditor({
         return
       }
     }, 100)
-  }, [nodes, skillColor])
+  }, [nodes, skillColor, initialEdges])
 
   // Initialize G6 graph
   useEffect(() => {
@@ -109,10 +144,12 @@ export function FlowEditor({
         style: {
           size: [NODE_WIDTH, NODE_HEIGHT],
           innerHTML: (d: any) => {
-            const { label, desc, color, enabled, step, skillColor } = d.data
-            const c = enabled ? color : '#cbd5e1'
-            const bg = enabled ? `${skillColor}08` : '#f8fafc'
-            const stepBg = enabled ? color : '#94a3b8'
+            const { label, desc, color, enabled, type, skillColor } = d.data
+            const nodeType = NODE_TYPES[type] ?? NODE_TYPES.dummy
+            const typeColor = color || nodeType.color
+            const c = enabled ? typeColor : '#cbd5e1'
+            const bg = enabled ? `${nodeType.color}10` : '#f8fafc'
+            const iconBg = enabled ? nodeType.color : '#94a3b8'
             const opacity = enabled ? '1' : '0.55'
             return `
 <div style="
@@ -120,20 +157,21 @@ export function FlowEditor({
   background:${bg};
   border:2px solid ${c};
   border-radius:14px;
-  padding:14px 16px;
-  display:flex;align-items:center;gap:12px;
+  padding:12px 14px;
+  display:flex;align-items:center;gap:10px;
   font-family:inherit;
   opacity:${opacity};
   box-shadow:0 2px 8px rgba(0,0,0,0.06);
   user-select:none;
   cursor:pointer;
+  position:relative;
 ">
   <div style="
     width:32px;height:32px;border-radius:50%;
-    background:${stepBg};color:white;
+    background:${iconBg};color:white;
     display:flex;align-items:center;justify-content:center;
-    font-size:13px;font-weight:700;flex-shrink:0;
-  ">${step}</div>
+    font-size:14px;font-weight:700;flex-shrink:0;
+  ">${nodeType.icon}</div>
   <div style="flex:1;min-width:0;overflow:hidden;">
     <div style="
       font-size:14px;font-weight:600;color:#0f172a;
@@ -141,14 +179,19 @@ export function FlowEditor({
       overflow-wrap:break-word;word-break:break-word;
       display:-webkit-box;-webkit-line-clamp:2;
       -webkit-box-orient:vertical;overflow:hidden;
-      margin-bottom:3px;
+      margin-bottom:2px;
     ">${escapeHtml(label)}</div>
     <div style="
       font-size:11px;color:#64748b;line-height:1.4;
       overflow-wrap:break-word;word-break:break-word;
-      display:-webkit-box;-webkit-line-clamp:3;
+      display:-webkit-box;-webkit-line-clamp:2;
       -webkit-box-orient:vertical;overflow:hidden;
     ">${escapeHtml(desc)}</div>
+    <div style="
+      margin-top:3px;font-size:9px;font-weight:600;
+      color:${nodeType.color};
+      letter-spacing:0.5px;
+    ">${nodeType.label}</div>
   </div>
 </div>`
           },
@@ -159,7 +202,10 @@ export function FlowEditor({
         style: {
           stroke: (d: any) => {
             const sourceNode = nodes.find((n) => n.id === d.source)
-            return sourceNode?.enabled ? sourceNode.color : '#cbd5e1'
+            if (!sourceNode) return '#cbd5e1'
+            if (!sourceNode.enabled) return '#cbd5e1'
+            const nt = NODE_TYPES[sourceNode.type] ?? NODE_TYPES.dummy
+            return sourceNode.color || nt.color
           },
           lineWidth: 2,
           endArrow: true,
@@ -201,6 +247,7 @@ export function FlowEditor({
           desc: n.desc,
           color: n.color,
           enabled: n.enabled,
+          type: n.type,
           step: i + 1,
           skillColor,
         },
@@ -209,11 +256,7 @@ export function FlowEditor({
           y: n.pos?.y ?? NODE_Y,
         },
       })),
-      edges: nodes.slice(0, -1).map((_, i) => ({
-        id: `edge-${i}`,
-        source: nodes[i].id,
-        target: nodes[i + 1].id,
-      })),
+      edges: buildEdges(nodes),
     })
 graph.draw()
     setTimeout(() => {
@@ -334,7 +377,7 @@ graph.draw()
             <button
               className="btn btn-primary"
               onClick={() => {
-                onSave(nodes)
+                onSave(nodes, initialEdges)
                 onClose()
               }}
             >
@@ -402,60 +445,65 @@ graph.draw()
                 <div style={{ flex: 1, overflow: 'auto', padding: 8 }}>
                   {nodes.map((node, i) => (
                     <div
-                      key={node.id}
-                      onClick={() => setEditingId(node.id)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        padding: '10px 12px',
-                        borderRadius: 8,
-                        cursor: 'pointer',
-                        marginBottom: 4,
-                        transition: 'background 0.15s',
-                        opacity: node.enabled ? 1 : 0.55,
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'var(--bg-hover)'
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'transparent'
-                      }}
-                    >
-                      <div
+                        key={node.id}
+                        onClick={() => setEditingId(node.id)}
                         style={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: '50%',
-                          background: node.enabled ? node.color : '#94a3b8',
-                          color: 'white',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: 11,
-                          fontWeight: 700,
-                          flexShrink: 0,
+                          gap: 10,
+                          padding: '10px 12px',
+                          borderRadius: 8,
+                          cursor: 'pointer',
+                          marginBottom: 4,
+                          transition: 'background 0.15s',
+                          opacity: node.enabled ? 1 : 0.55,
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'var(--bg-hover)'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent'
                         }}
                       >
-                        {i + 1}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           style={{
-                            fontSize: 12,
-                            fontWeight: 600,
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
+                            width: 24,
+                            height: 24,
+                            borderRadius: '50%',
+                            background: node.enabled ? (NODE_TYPES[node.type] ?? NODE_TYPES.dummy).color : '#94a3b8',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            flexShrink: 0,
                           }}
                         >
-                          {node.label}
+                          {(NODE_TYPES[node.type] ?? NODE_TYPES.dummy).icon}
                         </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div
+                              style={{
+                                fontSize: 12,
+                                fontWeight: 600,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {node.label}
+                            </div>
+                            <span style={{ fontSize: 9, color: (NODE_TYPES[node.type] ?? NODE_TYPES.dummy).color, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                              {(NODE_TYPES[node.type] ?? NODE_TYPES.dummy).label}
+                            </span>
+                          </div>
+                        </div>
+                        <EditIcon
+                          sx={{ fontSize: 13, color: 'var(--text-secondary)' }}
+                        />
                       </div>
-                      <EditIcon
-                        sx={{ fontSize: 13, color: 'var(--text-secondary)' }}
-                      />
-                    </div>
                   ))}
                 </div>
               </>
@@ -480,6 +528,8 @@ function EditPanel({
   const [desc, setDesc] = useState(node.desc)
   const [enabled, setEnabled] = useState(node.enabled)
 
+  const nodeTypeDef = NODE_TYPES[node.type] ?? NODE_TYPES.dummy
+
   // Reset local state when editing a different node
   useEffect(() => {
     setLabel(node.label)
@@ -498,9 +548,22 @@ function EditPanel({
           color: 'var(--text-secondary)',
           letterSpacing: '0.5px',
           textTransform: 'uppercase',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
         }}
       >
-        Edit Step
+        <span style={{
+          background: nodeTypeDef.color,
+          color: 'white',
+          borderRadius: 4,
+          padding: '1px 6px',
+          fontSize: 10,
+          fontWeight: 600,
+        }}>
+          {nodeTypeDef.icon} {nodeTypeDef.label}
+        </span>
+        <span>Edit</span>
       </div>
       <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
         <div className="form-group">
@@ -540,6 +603,21 @@ function EditPanel({
             Enabled
           </label>
         </div>
+
+        {/* Type-specific config summary */}
+        {node.config && Object.keys(node.config).length > 0 && (
+          <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+              Config
+            </div>
+            {Object.entries(node.config).map(([key, val]) => (
+              <div key={key} style={{ marginBottom: 6, fontSize: 12 }}>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{key}: </span>
+                <span style={{ color: '#0f172a' }}>{typeof val === 'string' ? val : JSON.stringify(val)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       <div
         style={{
