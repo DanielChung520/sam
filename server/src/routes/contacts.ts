@@ -29,6 +29,8 @@ function toDto(c: Contact): Record<string, unknown> {
     honorific: c.honorific ?? '',
     salutation: c.salutation ?? '',
     gender: c.gender ?? '',
+    birthday: c.birthday ?? '',
+    ageGroup: c.ageGroup ?? '',
     phone: c.phone ?? '',
     email: c.email ?? '',
     company: c.company ?? '',
@@ -91,7 +93,7 @@ router.patch('/:id', async (req: any, res) => {
   if (!channelId) return res.status(400).json({ error: 'channelId required' });
   const userId = req.params.id;
   const {
-    title, nickname, honorific, salutation, gender,
+    title, nickname, honorific, salutation, gender, birthday, ageGroup,
     phone, email, company, address, remark, tags,
     displayName, pictureUrl, statusMessage,
   } = req.body ?? {};
@@ -107,6 +109,8 @@ router.patch('/:id', async (req: any, res) => {
       honorific,
       salutation,
       gender,
+      birthday,
+      ageGroup,
       phone,
       email,
       company,

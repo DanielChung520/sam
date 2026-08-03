@@ -147,6 +147,8 @@ export async function updateContact(contactId: string, fields: {
   honorific?: string;
   salutation?: string;
   gender?: string;
+  birthday?: string;
+  ageGroup?: string;
   phone?: string;
   email?: string;
   company?: string;

@@ -17,6 +17,8 @@ export interface Contact {
   honorific?: string;              // 尊稱（相容舊欄位）
   salutation?: string;             // 稱謂（單一欄位，供祝賀/名片回覆使用）
   gender?: string;                 // 性別（male/female）
+  birthday?: string;               // 生日（YYYY-MM-DD，可選）
+  ageGroup?: string;               // 年齡段（18-25 / 26-35 / 36-45 / 46-60 / 60+）
   phone?: string;                  // 電話
   email?: string;                  // Email
   company?: string;                // 公司
@@ -102,6 +104,8 @@ export async function updateContactProfile(
     honorific?: string;
     salutation?: string;
     gender?: string;
+    birthday?: string;
+    ageGroup?: string;
     phone?: string;
     email?: string;
     company?: string;
@@ -123,6 +127,8 @@ export async function updateContactProfile(
       honorific: profile.honorific,
       salutation: profile.salutation,
       gender: profile.gender,
+      birthday: profile.birthday,
+      ageGroup: profile.ageGroup,
       phone: profile.phone,
       email: profile.email,
       company: profile.company,
@@ -146,6 +152,8 @@ export async function updateContactProfile(
     honorific: profile.honorific !== undefined ? profile.honorific : existing.honorific,
     salutation: profile.salutation !== undefined ? profile.salutation : existing.salutation,
     gender: profile.gender !== undefined ? profile.gender : existing.gender,
+    birthday: profile.birthday !== undefined ? profile.birthday : existing.birthday,
+    ageGroup: profile.ageGroup !== undefined ? profile.ageGroup : existing.ageGroup,
     phone: profile.phone !== undefined ? profile.phone : existing.phone,
     email: profile.email !== undefined ? profile.email : existing.email,
     company: profile.company !== undefined ? profile.company : existing.company,

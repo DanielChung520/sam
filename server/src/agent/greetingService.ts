@@ -92,19 +92,36 @@ export async function generatePersonalizedGreeting(input: {
 }): Promise<{ ok: boolean; reply?: string; reason?: string }> {
   const { type, festival, greeting_period: period, greeting_content: content, summary } = input;
 
-  // 1. 找主身的朋友稱呼
+  // 1. 找主身的朋友（稱呼 + 性別 + 年齡段）
   let salutation = '親愛的朋友';
+  let gender = '';
+  let ageGroup = '';
   try {
     const contact = await findContact(input.channelId, input.userId);
-    if (contact) salutation = resolveSalutation(contact);
+    if (contact) {
+      salutation = resolveSalutation(contact);
+      gender = contact.gender ?? '';
+      ageGroup = contact.ageGroup ?? '';
+    }
   } catch (e) {
     logger.warn('greeting.contact_lookup_failed', { channelId: input.channelId, error: String(e) });
   }
 
+  // 依性別/年齡段調整語氣：越年長越正式
+  const genderNote = gender === 'male' ? '對方為男性' : gender === 'female' ? '對方為女性' : '';
+  const ageNote = ageGroup
+    ? ageGroup === '18-25' ? '對方較年輕（18-25 歲），語氣可親切活潑'
+    : ageGroup === '26-35' ? '對方為青壯年（26-35 歲），語氣自然得體'
+    : ageGroup === '36-45' ? '對方為中年（36-45 歲），語氣穩重有禮'
+    : ageGroup === '46-60' ? '對方為中高齡（46-60 歲），語氣恭敬正式'
+    : '對方為高齡長輩（60+），語氣莊重恭敬，用詞講究'
+    : '未設定年齡段，視為青年，語氣親切活潑';
+  const toneHint = [genderNote, ageNote].filter(Boolean).join('，');
+
   const isFestival = type.includes('祝福') || !!festival;
   const scene = isFestival ? `節慶「${festival || '祝賀'}」` : `問安時段「${period || '問候'}」`;
   const prompt = `收到${salutation}寄來的${type}（${scene}），圖片內容：${content || summary || ''}。
-請以「${salutation}」為開頭稱呼，用文雅措辭回覆感謝對方的心意，簡短 1-2 句，不要自我介紹。`;
+請以「${salutation}」為開頭稱呼，用文雅措辭回覆感謝對方的心意，簡短 1-2 句，不要自我介紹。${toneHint ? `\n語氣要求：${toneHint}。` : ''}`;
 
   // 2. 生成 + 品質檢查，重試最多 2 次
   let lastError = '';

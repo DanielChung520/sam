@@ -28,6 +28,8 @@ interface ContactDetail {
   honorific: string;
   salutation: string;
   gender: string;
+  birthday: string;
+  ageGroup: string;
   phone: string;
   email: string;
   company: string;
@@ -49,6 +51,8 @@ export default function FriendDetailScreen() {
   const [showEdit, setShowEdit] = useState(false);
   const [editSalutation, setEditSalutation] = useState('');
   const [editGender, setEditGender] = useState('');
+  const [editBirthday, setEditBirthday] = useState('');
+  const [editAgeGroup, setEditAgeGroup] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editCompany, setEditCompany] = useState('');
@@ -231,6 +235,8 @@ export default function FriendDetailScreen() {
     if (!contact) return;
     setEditSalutation(contact.salutation ?? '');
     setEditGender(contact.gender ?? '');
+    setEditBirthday(contact.birthday ?? '');
+    setEditAgeGroup(contact.ageGroup ?? '');
     setEditPhone(contact.phone ?? '');
     setEditEmail(contact.email ?? '');
     setEditCompany(contact.company ?? '');
@@ -247,6 +253,8 @@ export default function FriendDetailScreen() {
       const json = await updateContact(contactId, {
         salutation: editSalutation.trim(),
         gender: editGender.trim(),
+        birthday: editBirthday.trim(),
+        ageGroup: editAgeGroup,
         phone: editPhone.trim(),
         email: editEmail.trim(),
         company: editCompany.trim(),
@@ -419,6 +427,39 @@ export default function FriendDetailScreen() {
                 >
                   <Text style={{ fontSize: 14, fontWeight: '600', color: editGender === g.v ? colors.primary : colors.textSecondary }}>
                     {g.l}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>生日（可選）</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editBirthday}
+              onChangeText={setEditBirthday}
+              placeholder="如：1975-06-15（無法取得生日可留空，改用年齡段）"
+              placeholderTextColor={colors.textTertiary}
+              autoCapitalize="none"
+            />
+
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 }}>年齡段（可選）</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+              {['18-25', '26-35', '36-45', '46-60', '60+'].map((g) => (
+                <TouchableOpacity
+                  key={g}
+                  onPress={() => setEditAgeGroup(editAgeGroup === g ? '' : g)}
+                  style={{
+                    paddingVertical: 10,
+                    paddingHorizontal: 16,
+                    borderRadius: 10,
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: editAgeGroup === g ? colors.primary : 'rgba(0,0,0,0.12)',
+                    backgroundColor: editAgeGroup === g ? colors.primary08 : colors.surface,
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: editAgeGroup === g ? colors.primary : colors.textSecondary }}>
+                    {g}
                   </Text>
                 </TouchableOpacity>
               ))}
