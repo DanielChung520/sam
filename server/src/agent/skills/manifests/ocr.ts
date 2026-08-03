@@ -1,18 +1,23 @@
 // Built-in skill: ocr
-// 圖片文字辨識（名片 / 賀卡 / 其他）— 呼叫本機 Qwen2.5-VL vllm 引擎
+// 圖片文字辨識（名片 / 賀卡 / 其他）— 透過 dllm 主 API（lazy-load VL 引擎）
 
 import type { SkillManifest } from '../../types.js';
 import { registerInlineHandler } from '../../skillExecutor.js';
 import { getFileStorage } from '../../../lib/fileStorage.js';
 import { logger } from '../../logger.js';
 
-const VL_ENDPOINT = process.env.VL_API_BASE ?? 'http://127.0.0.1:18002/v1';
+// 走 dllm 統一入口（11400），dllm 負責 lazy-load Qwen2.5-VL 引擎並路由
+const DLLM_API_BASE = process.env.LLM_API_BASE ?? 'http://localhost:11400/v1';
+const DLLM_API_KEY = process.env.LLM_API_KEY ?? '';
 const VL_MODEL = process.env.VL_MODEL ?? 'Qwen2.5-VL-7B-Instruct';
 
 async function recognizeImage(imageB64: string): Promise<string> {
-  const res = await fetch(`${VL_ENDPOINT}/chat/completions`, {
+  const res = await fetch(`${DLLM_API_BASE}/chat/completions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(DLLM_API_KEY ? { Authorization: `Bearer ${DLLM_API_KEY}` } : {}),
+    },
     body: JSON.stringify({
       model: VL_MODEL,
       messages: [
@@ -31,10 +36,10 @@ async function recognizeImage(imageB64: string): Promise<string> {
       max_tokens: 600,
       temperature: 0.3,
     }),
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(120_000),
   });
   if (!res.ok) {
-    throw new Error(`VL engine HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    throw new Error(`dllm VL HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
   }
   const j = (await res.json()) as any;
   return j?.choices?.[0]?.message?.content ?? '';
@@ -76,7 +81,7 @@ const manifest: SkillManifest = {
     { name: 'storageKey', type: 'string', required: false, description: '已儲存的圖片路徑' },
   ],
   executor: { type: 'inline', handler: 'ocr' },
-  timeoutMs: 60_000,
+  timeoutMs: 120_000,
 };
 
 export default manifest;
