@@ -1,10 +1,68 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
+import { findAccountByUsername, verifyPassword, upsertAccount } from '../data/accountRepo.js';
+import { logger } from '../agent/logger.js';
 
 const router = Router();
 
 // In-memory user store (will be replaced with DB later)
 const users: Record<string, { id: string; name: string; avatar: string; channels: string[] }> = {};
+
+// 客戶（業務員）登入：username/password → JWT（含 businessOwnerId + channelIds）
+router.post('/business-login', async (req: any, res: any) => {
+  const { username, password } = req.body ?? {};
+  if (!username || !password) {
+    return res.status(400).json({ error: 'username and password required' });
+  }
+  try {
+    const account = await findAccountByUsername(username);
+    if (!account || !account.enabled) {
+      return res.status(401).json({ error: '帳號不存在或已停用' });
+    }
+    if (!account.passwordHash || !verifyPassword(password, account.passwordHash)) {
+      return res.status(401).json({ error: '帳號或密碼錯誤' });
+    }
+    const token = jwt.sign(
+      { sub: account._key, businessOwnerId: account.businessOwnerId, channelIds: account.channelIds ?? [], role: 'business' },
+      process.env.JWT_SECRET || 'dev-secret',
+      { expiresIn: '7d' }
+    );
+    // 更新最新登錄時間
+    try {
+      await upsertAccount({
+        _key: account._key,
+        name: account.name,
+        email: account.email,
+        username: account.username,
+        passwordHash: account.passwordHash,
+        phone: account.phone,
+        role: account.role,
+        businessOwnerId: account.businessOwnerId,
+        channelIds: account.channelIds ?? [],
+        enabled: account.enabled,
+        source: account.source,
+        lastLoginAt: Date.now(),
+      });
+    } catch (e) {
+      logger.warn('auth.last_login_update_failed', { account: account._key, error: String(e) });
+    }
+    logger.info('auth.business_login', { account: account._key });
+    res.json({
+      token,
+      user: {
+        id: account._key,
+        name: account.name,
+        email: account.email,
+        businessOwnerId: account.businessOwnerId,
+        channelIds: account.channelIds ?? [],
+        lastLoginAt: Date.now(),
+      },
+    });
+  } catch (e) {
+    logger.error('auth.business_login.failed', { error: String(e) });
+    res.status(500).json({ error: '登入失敗，請稍後再試' });
+  }
+});
 
 // Temporary: auto-login for development
 router.post('/login', (req: any, res: any) => {
