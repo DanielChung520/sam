@@ -16,6 +16,7 @@ import { delegateToAgent, recordDelegation, type DelegationResult } from './agen
 import { saveArtifact } from '../lib/artifactStore.js';
 import { logger } from './logger.js';
 import { getConversationStore } from './stateStore.js';
+import type { MessageType } from './intentEngine.js';
 
 export const NEW_COMMAND = '/new';
 export const NEW_COMMAND_RESPONSE = '好的，讓我們重新開始。有什麼可以幫您？';
@@ -107,7 +108,7 @@ export class PolarisPipeline {
       return polarisRule;
     }
 
-    // 意圖引擎（DB 配置）：多關鍵詞 → 意圖 → 行為（sirius/deneb/問候等皆由 DB 規則驅動）
+    // 意圖引擎（DB 配置）：型別/細分型/關鍵詞 → 意圖 → 行為（text 問候/指令、image 名片等皆由 DB 規則驅動）
     const intentResult = await this.matchIntentBehavior(input, text);
     if (intentResult) {
       return intentResult;
@@ -535,30 +536,24 @@ export class PolarisPipeline {
     };
   }
 
-  // 意圖引擎（DB 配置）：依多關鍵詞規則決定行為
+  // 意圖引擎（DB 配置）：依 型別(message.type)/細分型/關鍵詞/Regex 規則決定行為
   private async matchIntentBehavior(
     input: HandleMessageInput,
     text: string,
+    subType?: string,
   ): Promise<PipelineResult | null> {
     try {
       const { getIntentRules, matchIntent } = await import('./intentEngine.js');
       const rules = await getIntentRules();
       if (rules.length === 0) return null;
 
-      const match = matchIntent(text, rules);
+      const mediaType = input.media?.mediaType;
+      const messageType = (mediaType && mediaType !== 'image' && mediaType !== 'sticker'
+        ? mediaType
+        : 'text') as MessageType;
+      const match = matchIntent({ text, messageType, subType }, rules);
       if (!match) return null;
       const { rule } = match;
-
-      // reply → 直接回覆
-      if (rule.behavior.action === 'reply') {
-        return {
-          text: rule.behavior.target,
-          intent: { type: 'chitchat' },
-          conversationId: input.conversationId ?? input.userId,
-          state: 'idle',
-          reset: false,
-        };
-      }
 
       // skill → 走 slash 路由（reuse resolveSlashCommand 格式）
       if (rule.behavior.action === 'skill') {

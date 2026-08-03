@@ -87,5 +87,25 @@ sam/
 - ✅ Agent Layer 全 7 phases（webhook 已接 pipeline）
 - ✅ Admin Panel（Agent Center、Skills 流程編輯器、14 條 admin API）
 - ✅ Admin e2e 10/10 通過
+- ✅ 意圖引擎（DB 驅動：多關鍵詞 → 意圖 → 行為，AgentDetail 意圖 tab 可配置）
 - ⬜ 登入頁面整合（Expo App AuthContext）
 - ⬜ 多租戶管理後台串接真實 LINE Channel 資料
+
+## 技術債（頂層 Webhook Event）
+
+頂層 event（`webhook.ts` 的 `event.type`）目前僅 `message`/`follow`/`unfollow` 有實質處理，
+`join`/`leave` 刻意忽略，其餘 9 種（postback/beacon/accountLink/things/unsend/memberJoined/memberLeft/videoPlayComplete/edit）
+被 `if (event.type !== 'message') continue` 靜默丟棄。
+
+區分原則：LINE 平台會自動處理「顯示層」行為（群組成員加入/離開系統訊息、收回/編輯的顯示），
+但 **postback 是唯一「LINE 完全不處理、純粹要我們回應」的頂層事件**。
+
+| Event | 建議默認行為 | 現況 |
+|-------|-------------|------|
+| `postback` | 選單按鈕 → `resolveMenuChoice` → slash 指令（選單系統已建好未接上）| ❌ 未處理 |
+| `unsend` | 撤回對應的記憶/CRM 抽取 | ❌ 未處理 |
+| `memberJoined`/`memberLeft` | 群組歡迎詞/簿記 | ❌ 未處理（LINE 已自動顯示系統訊息）|
+| `edit` | 重新處理編輯後訊息 | ❌ 未處理（LINE 已自動更新顯示）|
+| `videoPlayComplete` | 追蹤/後續行為 | ❌ 未處理 |
+| `beacon`/`things`/`accountLink` | 需對應 LINE 功能設定，可暫緩 | ❌ 未處理 |
+

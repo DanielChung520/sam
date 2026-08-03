@@ -89,14 +89,18 @@ export interface Agent {
     enabled: boolean;
     argHint?: string;
   }>;
-  // 意圖規則（多關鍵詞 → 意圖 → 行為）
+  // 意圖規則（型別(message.type)/細分型/判斷/行為）
   intents?: Array<{
     id: string;
     name: string;
-    triggerType: 'keyword' | 'regex' | 'event' | 'messageType' | 'ocrType' | 'slash';
-    triggers: string[];
+    messageType: 'text' | 'image' | 'video' | 'audio' | 'file' | 'location' | 'sticker';
+    subType?: string;
+    match: {
+      type: 'keyword' | 'regex';
+      patterns: string[];
+    };
     behavior: {
-      action: 'skill' | 'agent' | 'llm' | 'reply';
+      action: 'agent' | 'skill' | 'llm';
       target: string;
       params?: Record<string, unknown>;
     };

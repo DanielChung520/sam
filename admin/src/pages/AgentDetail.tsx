@@ -45,14 +45,18 @@ export interface MainAgentDetail extends AgentCenterItem {
   }
 }
 
-// 意圖規則（多關鍵詞 → 意圖 → 行為）
+// 意圖規則（名稱 / 型別 / 細分型 / 判斷 / 行為）
 interface IntentRuleItem {
   id: string
   name: string
-  triggerType: 'keyword' | 'regex' | 'event' | 'messageType' | 'ocrType' | 'slash'
-  triggers: string[]
+  messageType: 'text' | 'image' | 'video' | 'audio' | 'file' | 'location' | 'sticker'
+  subType?: string
+  match: {
+    type: 'keyword' | 'regex'
+    patterns: string[]
+  }
   behavior: {
-    action: 'skill' | 'agent' | 'llm' | 'reply'
+    action: 'agent' | 'skill' | 'llm'
     target: string
     params?: Record<string, unknown>
   }
@@ -444,7 +448,7 @@ export function AgentDetail({
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                  多關鍵詞 → 意圖 → 行為（依優先序高→低比對，命中即執行）
+                  名稱 / 型別 / 細分型 / 判斷 / 行為（依優先序高→低比對，命中即執行）
                 </div>
                 <button
                   className="btn btn-primary"
@@ -454,8 +458,9 @@ export function AgentDetail({
                       {
                         id: `intent-${Date.now()}`,
                         name: '',
-                        triggerType: 'keyword',
-                        triggers: [],
+                        messageType: 'text',
+                        subType: '問候',
+                        match: { type: 'keyword', patterns: [] },
                         behavior: { action: 'llm', target: '' },
                         enabled: true,
                         priority: intents.length + 1,
@@ -468,7 +473,7 @@ export function AgentDetail({
               </div>
               {intents.length === 0 ? (
                 <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
-                  尚無意圖規則。點「＋ 新增意圖規則」設定感知（關鍵詞/事件/OCR）與對應行為。
+                  尚無意圖規則。點「＋ 新增意圖規則」設定型別、細分型、判斷與對應行為。
                 </div>
               ) : (
                 intents.map((rule, i) => (
@@ -476,7 +481,7 @@ export function AgentDetail({
                     <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                       <input
                         className="form-input"
-                        placeholder="規則名稱（如：名片收集）"
+                        placeholder="名稱（如：問候、名片收集）"
                         value={rule.name}
                         onChange={(e) =>
                           setIntents(intents.map((r, j) => (j === i ? { ...r, name: e.target.value } : r)))
@@ -485,22 +490,47 @@ export function AgentDetail({
                       />
                       <select
                         className="form-input"
-                        value={rule.triggerType}
+                        value={rule.messageType}
                         onChange={(e) =>
                           setIntents(
                             intents.map((r, j) =>
-                              j === i ? { ...r, triggerType: e.target.value as IntentRuleItem['triggerType'] } : r,
+                              j === i ? { ...r, messageType: e.target.value as IntentRuleItem['messageType'] } : r,
                             ),
                           )
                         }
                         style={{ flex: 1 }}
                       >
-                        <option value="keyword">關鍵詞</option>
-                        <option value="regex">Regex</option>
-                        <option value="slash">/ 指令</option>
-                        <option value="event">事件</option>
-                        <option value="messageType">訊息類型</option>
-                        <option value="ocrType">OCR 類型</option>
+                        <option value="text">文字 (text)</option>
+                        <option value="image">圖片 (image)</option>
+                        <option value="video">影片 (video)</option>
+                        <option value="audio">語音 (audio)</option>
+                        <option value="file">檔案 (file)</option>
+                        <option value="location">位置 (location)</option>
+                        <option value="sticker">貼圖 (sticker)</option>
+                      </select>
+                      <select
+                        className="form-input"
+                        value={rule.subType ?? ''}
+                        onChange={(e) =>
+                          setIntents(intents.map((r, j) => (j === i ? { ...r, subType: e.target.value } : r)))
+                        }
+                        style={{ flex: 1 }}
+                      >
+                        <option value="">— 無細分型 —</option>
+                        {rule.messageType === 'text' ? (
+                          <>
+                            <option value="問候">text: 問候</option>
+                            <option value="打招呼">text: 打招呼</option>
+                            <option value="詢問">text: 詢問</option>
+                            <option value="指令">text: 指令</option>
+                          </>
+                        ) : rule.messageType === 'image' ? (
+                          <>
+                            <option value="問候及祝福">image: 問候及祝福</option>
+                            <option value="名片">image: 名片</option>
+                            <option value="其他">image: 其他</option>
+                          </>
+                        ) : null}
                       </select>
                       <select
                         className="form-input"
@@ -516,14 +546,13 @@ export function AgentDetail({
                         }
                         style={{ flex: 1 }}
                       >
-                        <option value="llm">LLM 回覆</option>
-                        <option value="skill">Skill</option>
-                        <option value="agent">Agent</option>
-                        <option value="reply">固定回覆</option>
+                        <option value="llm">LLM</option>
+                        <option value="skill">Skills</option>
+                        <option value="agent">Sub-Agent</option>
                       </select>
                       <input
                         className="form-input"
-                        placeholder="目標（skill id / agent / 回覆文字）"
+                        placeholder="目標（agent 名 / skill id / llm 提示）"
                         value={rule.behavior.target}
                         onChange={(e) =>
                           setIntents(
@@ -536,15 +565,30 @@ export function AgentDetail({
                       />
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                      <select
+                        className="form-input"
+                        value={rule.match.type}
+                        onChange={(e) =>
+                          setIntents(
+                            intents.map((r, j) =>
+                              j === i ? { ...r, match: { ...r.match, type: e.target.value as IntentRuleItem['match']['type'] } } : r,
+                            ),
+                          )
+                        }
+                        style={{ width: 110 }}
+                      >
+                        <option value="keyword">關鍵詞</option>
+                        <option value="regex">Regex</option>
+                      </select>
                       <input
                         className="form-input"
-                        placeholder="觸發詞（頓號分隔，如：名片、換名片）"
-                        value={rule.triggers.join('、')}
+                        placeholder="判斷內容（頓號分隔；留空則僅靠型別/細分型命中）"
+                        value={rule.match.patterns.join('、')}
                         onChange={(e) =>
                           setIntents(
                             intents.map((r, j) =>
                               j === i
-                                ? { ...r, triggers: e.target.value.split(/[、,，\n]/).map((s) => s.trim()).filter(Boolean) }
+                                ? { ...r, match: { ...r.match, patterns: e.target.value.split(/[、,，\n]/).map((s) => s.trim()).filter(Boolean) } }
                                 : r,
                             ),
                           )
