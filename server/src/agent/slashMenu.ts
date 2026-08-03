@@ -35,6 +35,19 @@ export const SYSTEM_COMMANDS = new Set(['/', 'new', 'help', 'readme']);
 // 特殊技能未來由 agent/subagent 的 enabledSkills 白名單指定）
 export const BASE_SKILLS = new Set<string>();  // 全開：channel 不過濾 skill
 
+// / 選單顯示白名單 — 只顯示以下項目（其餘 agent/skill 仍可用，但不顯示在選單）
+// 對應：2 Deneb / 9 Aldebaran / 12 Betelgeuse / 13 Capella / 14 Rigel / 15 Spica / 18 網路搜尋 / 20 完整寫作
+export const VISIBLE_MENU_IDS = new Set([
+  'agent_deneb',       // 深度諮詢
+  'agent_aldebaran',   // 大綱設計
+  'agent_betelgeuse',  // 深度分析（取代 analyze skill）
+  'agent_capella',     // 質疑驗證
+  'agent_rigel',       // 資料蒐集
+  'agent_spica',       // 內容撰寫
+  'web-search',        // 網路搜尋
+  'write',             // 完整寫作
+]);
+
 let cachedMenu: MenuItem[] | null = null;
 let cachedAt = 0;
 const CACHE_TTL_MS = 30_000;
@@ -257,7 +270,7 @@ export async function resolveMenuChoice(input: string, channelId?: string): Prom
 }
 
 export async function formatSlashMenuText(channelId?: string): Promise<string> {
-  const menu = await buildSlashMenu(channelId);
+  const menu = (await buildSlashMenu(channelId)).filter((m) => VISIBLE_MENU_IDS.has(m.id));
   const lines: string[] = ['📋 可用功能：', ''];
 
   const group = (label: string, type: MenuItemType) => {
