@@ -1,6 +1,6 @@
 # AGENTS.md — LINE 代理（LINE Agent Platform）
 
-> 最後更新：2026-08-02
+> 最後更新：2026-08-04
 
 ## 產品定位
 
@@ -12,10 +12,9 @@
 
 | 文件 | 內容 |
 |------|------|
-| [`.docs/AGENT_LAYER_ARCHITECTURE.md`](.docs/AGENT_LAYER_ARCHITECTURE.md) | **完整架構說明**（LA / Channel / Agent / Skill / Sub-agent / SeaweedFS / token URL / Admin 規劃）|
 | [`.docs/INTENT_ENGINE_SPEC.md`](.docs/INTENT_ENGINE_SPEC.md) | **意圖引擎規格**（規則結構 名稱/型別/細分型/判斷/行為、匹配流程、seed、技術債）|
 | [`.docs/init.md`](.docs/init.md) | SAM 原 spec（系統定位、MoE 路由、USB 保險箱）|
-| [`.docs/spec/index.md`](.docs/spec/index.md) | 21 個 UI 頁面規格索引 |
+| [`.docs/spec/index.md`](.docs/spec/index.md) | UI 頁面規格索引 |
 
 **慣例**：新架構文件放 `.docs/`，不要開新的 `docs/` 目錄。`.docs/` 是設計/規格的單一真相。
 
@@ -50,7 +49,7 @@ sam/
 │   ├── e2e/          Playwright 端對端測試（admin-verify.spec.cjs）
 │   └── vite.config.ts   (port 7012)
 ├── server/          Express.js 後端（API + LINE Webhook, port 9091）
-│   ├── src/agent/    Agent layer（pipeline, intent, skills, memory, rate limiter）
+│   ├── src/agent/    Agent layer（pipeline, intent engine, flow runner, skills, memory, rate limiter）
 │   ├── src/data/     ArangoDB repos（agent/channel/account/memory/files/businessDoc...）
 │   ├── src/lib/      qdrant, seaweedFs, shareToken, taskforge, metrics, embedder
 │   └── src/routes/   Express routes（admin* 系列 = 管理後台 API）
@@ -149,11 +148,14 @@ npx playwright test          # 10 tests（admin/e2e/admin-verify.spec.cjs），�
 - ✅ PWA production build + service worker
 - ✅ Express 後端 JWT auth + LINE Webhook
 - ✅ **Agent Layer 全 7 phases**（server/src/agent/：intent classifier、skill registry、state store、memory、rate limiter、webhook 已接 pipeline）
+- ✅ **意圖引擎（DB 驅動）**：規則結構 名稱/型別/細分型/判斷/行為，AgentDetail 意圖 tab 可配置（見 `.docs/INTENT_ENGINE_SPEC.md`）
+- ✅ **Flow Runner（script 行為）**：精簡流程執行器（skill/condition/reply 節點），image-router 範例已上線
 - ✅ **Admin Panel 擴建**（Agent Center、Agent Detail、Business Docs、Files、MCP Tools、Skills 流程編輯器 + 14 條 admin API）
 - ✅ **Admin e2e 測試** 10/10 通過（Playwright）
 - ✅ Rust API Gateway 基礎架構
 - ⬜ 登入頁面整合（Expo App AuthContext）
 - ⬜ 多租戶管理後台串接真實 LINE Channel 資料
+- ⬜ 頂層 webhook event 處理（postback/unsend/memberJoined 等，見 README 技術債）
 - ⬜ 官方網站 `web/`
 
 ## 管理後台
@@ -318,6 +320,53 @@ interface NodePropSchema {
 - 技能層級定義 `inputSchema` / `outputSchema`（見 `admin/src/data/skill-catalog.ts`），顯示於 FlowEditor 右側欄頂部的「📥 輸入規格 / 📤 輸出規格」面板。
 - 節點層級的屬性 desc 也應描述該節點處理的資料格式（輸入吃什麼 / 輸出吐什麼）。
 
+### 11. Script Flow 範式（憲法級）
+
+意圖規則的 `behavior.action: 'script'` 可執行 `skill_flows` collection 中的流程定義，
+由 **Flow Runner**（`server/src/agent/flowRunner.ts`）依序執行節點。這是「多 skill 分流」的標準作法。
+
+#### 11.1 為什麼用 Script（而非 Sub-Agent）
+
+- **單一輸入、多路分流**：當一個訊息型別需要「先解析、再依結果走不同 skill」（如 image → OCR → 名片/賀卡/其他），
+  意圖規則的行為只有單一路徑，無法表達分叉 → 用 script flow 包住分流邏輯。
+- **輕量**：不需 sub-agent 的 LLM 對話鏈，直接依序執行 skill，延遲低。
+- **可視化**：流程節點可在 Skills 流程編輯器（FlowEditor）檢視/微調，分流條件清楚。
+
+#### 11.2 Flow Runner 支援的節點型別（精簡版）
+
+| 節點 | config 欄位 | 行為 |
+|------|------------|------|
+| `skill` | `skillId` | 呼叫對應 skill，輸出寫入 `context[skillId]` |
+| `condition` | `field` / `operator`（eq/ne/contains/notContains/empty/notEmpty）/ `value` / `onTrue` / `onFalse` | 依 `context[field]` 判斷，跳轉到指定節點 id |
+| `reply` | `text` | 回覆文字（支援 `${key}` 模板插值），流程結束 |
+
+#### 11.3 範例：image-router（圖片分流）
+
+```
+意圖規則: messageType=image → behavior.action=script, target=image-router
+
+skill_flows/image-router 節點:
+  trigger 「接收圖片」
+  → skill 「OCR 解析」(skillId: ocr)
+  → condition 「是名片？」(field: ocr, contains: 名片, onTrue: 名片收集, onFalse: 賀卡?)
+  → skill 「名片收集」(skillId: card-collection) → reply ${card-collection}
+  → condition 「是賀卡？」(contains: 賀卡) → reply ${ocr}（含個人化祝賀）
+  → reply 其他 ${ocr}
+```
+
+#### 11.4 建立 Script Flow 的步驟
+
+1. **意圖規則**：AgentDetail 意圖 tab → 行為選「Script (流程)」→ target 填 flow id（如 `image-router`）
+2. **流程定義**：寫入 `skill_flows` collection（key = base64url(flowId)，nodes = FlowNode[]）
+   - 可先寫 `admin/skills/*.json` 定義檔，或直接用 AI 討論生成後 PATCH collection
+3. **驗證**：`runFlow({ flowId, args })` 可單獨測試；condition 分流可用 mock 輸出測各分支
+
+#### 11.5 注意
+
+- flow 的 `_key` = `Buffer.from(flowId).toString('base64url')`（與 `loadFlowConfig` 同規則）
+- reply 模板用 `${key}` 插值（複用 `skillExecutor.interpolate`），非 `{key}`
+- flow 執行失敗（flow 不存在）時 `matchIntentBehavior` 回 null，fallback 到主 agent
+
 ## 文件索引
 
 | 文件 | 內容 |
@@ -325,7 +374,7 @@ interface NodePropSchema {
 | `AGENTS.md` | 專案總覽、開發原則、操作規範（本文件）|
 | `.sisyphus/safety-rules.md` | **安全規範** — 破壞性操作 SOP、PATCH 原則 |
 | `DESIGN.md` | UI/UX 設計系統（色彩、Typography、元件）|
-| `.docs/AGENT_LAYER_ARCHITECTURE.md` | 完整架構說明 |
+| `.docs/INTENT_ENGINE_SPEC.md` | 意圖引擎規格（結構/匹配/seed/技術債）|
 | `.docs/init.md` | SAM 原 spec |
 | `.docs/spec/index.md` | UI 頁面規格索引 |
 | `README.md` | 安裝與啟動說明 |
@@ -334,6 +383,7 @@ interface NodePropSchema {
 
 | 日期 | 版本 | 更新者 | 變更內容 |
 |------|------|--------|----------|
+| 2026-08-04 | 1.5.0 | Sisyphus | 新增 11. Script Flow 範式（憲法級）：flowRunner 節點、image-router 範例、建立步驟；移除斷裂連結 AGENT_LAYER_ARCHITECTURE.md；更新目前階段 |
 | 2026-08-03 | 1.3.0 | Sisyphus | 10.1 明確「不做流程建置」定位（vs n8n）；10.4 導入格式擴充 Markdown/XML/JSON/YAML + 導入後微調流程 |
 | 2026-08-03 | 1.2.0 | Sisyphus | 新增 10. 流程節點屬性規範（憲法級）：節點屬性欄、schema 驅動、AI 生成/外部導入 XML/JSON |
 | 2026-08-03 | 1.1.0 | Sisyphus | 新增開發原則（產品思維/多租戶/產出物格式/header/module size/臨時檔/複用檢查/服務操作/安全規範）+ 文件索引 + 修改歷程 |

@@ -71,6 +71,7 @@ interface IntentRule {
 | `llm` | 主 agent 處理，systemContext 帶意圖提示 | LLM 提示文字（可留空） |
 | `skill` | 走 slash 路由 `/${target} ${text}` | skill id（如 web-search、card-collection） |
 | `agent` | 委派 sub-agent | agent 名（如 sirius、deneb） |
+| `script` | 跑 flowRunner（skill_flows 流程）| flow id（如 image-router，見 AGENTS.md §11） |
 
 ## 3. 檔案對應
 
@@ -131,7 +132,13 @@ interface IntentRule {
 - `ocr.ts` 的 OCR 輸出 type（名片/問安卡/祝福賀卡/其他）→ 對映 subType（名片/問候及祝福/其他）
 - webhook media 路徑 → pipeline 帶入 subType → matchIntent
 
-### 6.3 welcome 文案參數化
+### 6.3 image 細分型接線 → 已由 script flow 取代
+
+原先規劃「OCR 結果傳給 matchIntentBehavior 的 subType」，已由 **script 行為（image-router flow）取代**：
+image 訊息命中 `image → script:image-router` 規則，flow 內執行 ocr skill → condition 依輸出分流
+到名片/賀卡/其他（見 AGENTS.md §11）。不再需要 pipeline 層的 subType 接線。
+
+### 6.4 welcome 文案參數化
 
 `server/src/agent/selfIntro.ts` 的歡迎詞（follow 事件）目前為寫死字串，應改為讀取
 `agent_polaris` 配置（符合「避免硬編碼」原則）。

@@ -51,6 +51,11 @@ export class PolarisPipeline {
     const text = (input.text ?? '').trim();
 
     if (input.media) {
+      // 意圖引擎優先：image 可走 script/skill 規則（如 image-router flow）
+      const intentResult = await this.matchIntentBehavior(input, text);
+      if (intentResult) {
+        return intentResult;
+      }
       const result = await this.agent.handleMessage(input);
       return { ...result, reset: false };
     }
@@ -548,12 +553,30 @@ export class PolarisPipeline {
       if (rules.length === 0) return null;
 
       const mediaType = input.media?.mediaType;
-      const messageType = (mediaType && mediaType !== 'image' && mediaType !== 'sticker'
-        ? mediaType
-        : 'text') as MessageType;
+      // messageType 對應 message.type：media 用實際型別（image/video/audio/file/sticker），無 media 為 text
+      const messageType = (mediaType ?? 'text') as MessageType;
       const match = matchIntent({ text, messageType, subType }, rules);
       if (!match) return null;
       const { rule } = match;
+
+      // script → 跑 flowRunner（skill_flows collection）
+      if (rule.behavior.action === 'script') {
+        const { runFlow } = await import('./flowRunner.js');
+        const flowResult = await runFlow({
+          flowId: rule.behavior.target,
+          args: { ...input, text },
+        });
+        if (flowResult.ok) {
+          return {
+            text: flowResult.output,
+            intent: { type: 'chitchat' },
+            conversationId: input.conversationId ?? input.userId,
+            state: 'idle',
+            reset: false,
+          };
+        }
+        return null;
+      }
 
       // skill → 走 slash 路由（reuse resolveSlashCommand 格式）
       if (rule.behavior.action === 'skill') {

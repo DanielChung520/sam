@@ -100,7 +100,7 @@ export interface Agent {
       patterns: string[];
     };
     behavior: {
-      action: 'agent' | 'skill' | 'llm';
+      action: 'agent' | 'skill' | 'llm' | 'script';
       target: string;
       params?: Record<string, unknown>;
     };
