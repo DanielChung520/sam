@@ -75,6 +75,7 @@ router.post('/:channelPath?', async (req: any, res: any) => {
   const destination: string | undefined = body.destination;
   const events: WebhookEvent[] = body.events || [];
   const channelPath: string | undefined = req.params.channelPath;
+  logger.info('webhook.access', { path: req.path, eventCount: events.length, destination });
 
   // 從 URL 解析 channel：/webhook/ch_{key} 或 /webhook/{key}
   let urlChannelKey: string | undefined;
@@ -110,8 +111,23 @@ router.post('/:channelPath?', async (req: any, res: any) => {
     if (rawBody) {
       const valid = validateSignature(rawBody, channelSecret, signature);
       if (!valid) {
-        logger.warn('webhook.invalid_signature', { destination });
-        return res.status(401).json({ error: 'invalid signature' });
+        // URL key 對應的 secret 驗簽失敗 → 改用 destination 找真實 channel 再驗一次
+        // （LINE 後台若設錯 webhook URL，事件仍可依 destination 正確路由）
+        const byDest = destination ? await getClientForChannel(destination) : null;
+        const destSecret = byDest?.channel?.channelSecret;
+        if (byDest?.channel && destSecret) {
+          const validByDest = validateSignature(rawBody, destSecret, signature);
+          if (validByDest) {
+            logger.info('webhook.signature_matched_by_destination', { urlChannelKey, destination });
+            channelLookup = byDest;
+          } else {
+            logger.warn('webhook.invalid_signature', { destination, urlChannelKey });
+            return res.status(401).json({ error: 'invalid signature' });
+          }
+        } else {
+          logger.warn('webhook.invalid_signature', { destination, urlChannelKey });
+          return res.status(401).json({ error: 'invalid signature' });
+        }
       }
     }
   } else {
