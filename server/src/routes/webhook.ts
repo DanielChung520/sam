@@ -340,17 +340,10 @@ async function processQueueItem(item: import('../agent/asyncQueue.js').QueueItem
 
     const text: string = event.message?.text ?? '';
 
-    // 純 `/`（工作選單）：只有主身本人（userId == channel destination）可觸發；
-    // 朋友/客戶發的 `/` 暫時忽略，不回覆。
-    if (text.trim() === '/') {
-      const isPrimary = !!channel?.destination && userId === channel.destination;
-      if (!isPrimary) {
-        logger.info('webhook.slash_ignored_for_friend', { channelId, userId });
-        return;
-      }
-    }
-
-    // ack：慢任務（taskforge/http 型 skill）先回「處理中」，完成後再 push 結果
+    // 純 `/`（工作選單）：所有人可查看（選單是公開功能，列出可用指令）；
+    // 原本的「僅主身」判斷（userId == destination）是錯的 — destination 是 bot userId，
+    // 發訊息者永遠不可能是 bot 自己，導致 slash 指令被誤丟棄。
+    // ack：慢任務（agent 委派 / taskforge/http skill）先回「處理中」，完成後再 push 結果
     const isSlowTask = await isSlowTaskSlash(text, channelId);
     if (isSlowTask && channel?.ackEnabled !== false && client && replyToken) {
       const ackMsg = channel.ackMessage?.trim() || '收到，處理中...';
