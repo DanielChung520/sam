@@ -1,21 +1,32 @@
 // Built-in skill: image-router（圖片分流）
 //
-// script executor：vm sandbox 執行程式碼 — 呼叫 ocr skill 解析，
-// 依結果分流：名片 → card-collection（感謝回覆）、其他 → 回覆 OCR 結果。
+// script executor：vm sandbox 執行程式碼 — 呼叫 ocr skill（parseOnly 回結構化 JSON），
+// 依 type 分流：名片 → card-collection、賀卡 → greeting-card、其他 → 摘要回覆，並記錄各節點耗時。
 // 意圖規則：messageType=image → behavior.action=skill, target=image-router。
 
 import type { SkillManifest } from '../../types.js';
 
 const IMAGE_ROUTER_CODE = `
-// image-router：OCR → 依結果分流
-const ocr = await callSkill('ocr', args);
-const out = String(ocr.output ?? '');
-log('OCR type:', out.includes('名片') ? '名片' : '其他');
-if (out.includes('名片')) {
-  const card = await callSkill('card-collection', { ...args, type: '名片' });
-  return String(card.output ?? '');
+// image-router：OCR(parseOnly) → 依 type 分流（名片/賀卡/其他），記錄各節點耗時
+const t0 = Date.now();
+const ocr = await callSkill('ocr', { ...args, parseOnly: true });
+const t1 = Date.now();
+const parsed = JSON.parse(String(ocr.output ?? '{}'));
+const type = String(parsed.type ?? '其他');
+const ocrMs = t1 - t0;
+if (type.includes('名片')) {
+  const card = await callSkill('card-collection', { ...args, ...parsed });
+  const t2 = Date.now();
+  return String(card.output ?? '') + '\\n\\n⏱ ocr:' + ocrMs + 'ms / card-collection:' + (t2 - t1) + 'ms / 總計:' + (t2 - t0) + 'ms';
 }
-return out;
+if (type.includes('問安') || type.includes('祝福')) {
+  const greet = await callSkill('greeting-card', { ...args, ...parsed });
+  const t2 = Date.now();
+  return String(greet.output ?? '') + '\\n\\n⏱ ocr:' + ocrMs + 'ms / greeting-card:' + (t2 - t1) + 'ms / 總計:' + (t2 - t0) + 'ms';
+}
+const t2 = Date.now();
+const other = parsed.summary ? '📷 圖片解析（其他）\\n📝 ' + String(parsed.summary) : '📷 圖片解析（其他）';
+return other + '\\n\\n⏱ ocr:' + ocrMs + 'ms / 總計:' + (t2 - t0) + 'ms';
 `;
 
 const manifest: SkillManifest = {

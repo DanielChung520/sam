@@ -118,6 +118,7 @@ const handler = async (args: Record<string, unknown>): Promise<{ ok: boolean; ou
     receivedAt?: number;
     channelId?: string;
     userId?: string;
+    parseOnly?: boolean;
   };
   const media = input.media;
   const channelId = input.channelId ?? (input as any).media?.channelId ?? 'unknown';
@@ -153,6 +154,11 @@ const handler = async (args: Record<string, unknown>): Promise<{ ok: boolean; ou
       parsed = JSON.parse(cleaned);
     } catch {
       parsed = { type: '其他', summary: text.trim().slice(0, 200) };
+    }
+
+    // parseOnly：只回結構化 JSON（分流交由呼叫者，如 image-router script）
+    if (input.parseOnly) {
+      return { ok: true, output: JSON.stringify({ ...parsed, _meta: { receivedAt } }) };
     }
 
     const base = formatReply(parsed, receivedAt);
