@@ -132,8 +132,8 @@ export async function generatePersonalizedGreeting(input: {
 
   const isFestival = type.includes('祝福') || !!festival;
   const scene = isFestival ? `節慶「${festival || '祝賀'}」` : `問安時段「${period || '問候'}」`;
-  const prompt = `收到${salutation}寄來的${type}（${scene}），圖片內容：${content || summary || ''}。
-請以「${salutation}」為開頭稱呼，用文雅措辭回覆感謝對方的心意，簡短 1-2 句，不要自我介紹。${toneHint ? `\n語氣要求：${toneHint}。` : ''}`;
+  const prompt = `${salutation}寄來一張${type}（${scene}），內容大意：${content || summary || ''}。
+請以「${salutation}」為開頭稱呼，先感謝對方的心意，再以你自己的文雅措辭回賀/回安（與對方卡片內容主題呼應但措辭不可重複、不要照抄對方文字），簡短 1-2 句，繁體中文，不要自我介紹。${toneHint ? `\n語氣要求：${toneHint}。` : ''}`;
 
   // 2. 生成 + 品質檢查，重試最多 2 次
   let lastError = '';
