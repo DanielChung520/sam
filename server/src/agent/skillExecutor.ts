@@ -322,13 +322,23 @@ export function resetSkillExecutor(): void {
 }
 
 export function interpolate(template: string, ctx: Record<string, unknown>): string {
-  if (!template || !template.includes('${')) return template;
-  return template.replace(/\$\{([^}]+)\}/g, (_match, key: string) => {
+  if (!template) return template;
+  // 支援兩種模板格式：${key}（skill manifest 慣用）與 {key}（FlowEditor 流程圖慣用）
+  const replace = (m: string, key: string): string => {
     const trimmed = key.trim();
     const value = getNestedValue(ctx, trimmed);
-    if (value === undefined || value === null) return `\${${trimmed}}`;
+    if (value === undefined || value === null) return m; // 保留原樣
     return String(value);
-  });
+  };
+  let out = template;
+  if (out.includes('${')) {
+    out = out.replace(/\$\{([^}]+)\}/g, (_m, key: string) => replace(_m, key));
+  }
+  if (out.includes('{') && !out.includes('${')) {
+    // 僅當沒有 ${} 時才處理 {key}（避免誤替換 JSON）
+    out = out.replace(/\{([a-zA-Z0-9_.[\]]+)\}/g, (m, key) => replace(m, key));
+  }
+  return out;
 }
 
 function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
