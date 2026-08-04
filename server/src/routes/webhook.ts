@@ -334,8 +334,8 @@ async function processQueueItem(item: import('../agent/asyncQueue.js').QueueItem
       }
     }
 
-    // ack：慢任務（taskforge 型 slash 指令）先回「處理中」，完成後再 push 結果
-    const isSlowTask = isTaskforgeSlash(text);
+    // ack：慢任務（taskforge/http 型 skill）先回「處理中」，完成後再 push 結果
+    const isSlowTask = await isSlowTaskSlash(text, channelId);
     if (isSlowTask && channel?.ackEnabled !== false && client && replyToken) {
       const ackMsg = channel.ackMessage?.trim() || '收到，處理中...';
       await safeReply(client, replyToken, ackMsg);
@@ -364,13 +364,27 @@ async function processQueueItem(item: import('../agent/asyncQueue.js').QueueItem
   }
 }
 
-// 判定是否為 taskforge 型慢任務（會阻塞數秒到數分鐘）
-function isTaskforgeSlash(text: string): boolean {
+// 判定是否為慢任務 slash 指令：解析 target 後依型別判斷
+// （agent 委派（main/sub）、taskforge/http skill → 慢，需先 ack；inline/process/script → 快）
+async function isSlowTaskSlash(text: string, channelId?: string): Promise<boolean> {
   const t = text.trim().toLowerCase();
   if (!t.startsWith('/')) return false;
-  const head = t.split(/\s+/)[0].slice(1);
-  return head === 'search' || head === 'analysis' || head === 'analyze' || head === 'write'
-    || head === 'web-search' || head === 'sirius' || head === 'deneb';
+
+  try {
+    const { resolveSlashCommand } = await import('../agent/slashMenu.js');
+    const { getSkillRegistry } = await import('../agent/skillRegistry.js');
+    const target = await resolveSlashCommand(text, channelId);
+    if (!target) return false;
+    if (target.type === 'sub_agent' || target.type === 'main_agent') return true;
+    if (target.type !== 'skill') return false;
+    const registry = await getSkillRegistry();
+    const skill = registry.get(target.id);
+    if (!skill) return false;
+    const ex = skill.executor;
+    return ex.type === 'taskforge' || ex.type === 'http';
+  } catch {
+    return false;
+  }
 }
 
 // 只用 push 送訊息（ack 已用 replyToken，結果走 push）
