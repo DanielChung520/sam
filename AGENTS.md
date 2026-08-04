@@ -349,13 +349,40 @@ target = skill id — 內部是流程還是程式碼由 skill 定義決定。
 | `process` | `flowId` | **flowRunner** 執行 skill_flows 節點（skill/condition/reply）|
 | `script` | `code` | **vm sandbox** 執行 AI 生成的程式碼 |
 
-#### 11.3 Flow Runner 支援的節點型別（精簡版）
+#### 11.3 Flow Runner 支援的節點型別（**真實執行**）
+
+> ⚠️ **流程圖是真實執行引擎**（不是設計圖）。FlowEditor 改任何節點 config（包含 llm 節點的 systemPrompt），重啟後會真的生效。已用 MARKER 探測驗證。
 
 | 節點 | config 欄位 | 行為 |
 |------|------------|------|
-| `skill` | `skillId` | 呼叫對應 skill，輸出寫入 `context[skillId]` |
-| `condition` | `field` / `operator`（eq/ne/contains/notContains/empty/notEmpty）/ `value` / `onTrue` / `onFalse` | 依 `context[field]` 判斷，跳轉到指定節點 id |
-| `reply` | `text` | 回覆文字（支援 `${key}` 模板插值），流程結束 |
+| `trigger` | `source` | 流程入口標記，無副作用 |
+| `skill` | `skillId` | 呼叫對應 skill，輸出寫入 `context[nodeId]` 與 `context[skillId]` |
+| `condition` | `field/operator/value/onTrue/onFalse` **或** `expression` | 依 `context[field]` 判斷，跳轉到指定節點 id；condition 支援兩種格式（業務員可選） |
+| **`llm`** | `model` / `systemPrompt` / `userPrompt` / `temperature` / `maxTokens` | **真實呼叫 chatCompletion**，輸出寫入 `context[nodeId]` 與 `context['llm_output']`（向後相容 key）；未指定 userPrompt 時預設將整個 context 序列化為 user message |
+| **`function`** | `code` / `timeoutMs` | **vm sandbox 執行** JS 程式碼，白名單：`args` / `context` / `callSkill(id, args)` / `log`；timeout 預設 10s |
+| **`storage`** | `collection` / `fields`（template）/ `accountIsolation` | **真實寫入 ArangoDB collection**，支援 `${key}` 與 `{key}` 兩種 template 插值；`accountIsolation=true` 時自動注入 `userAccount` 與 `channelId` |
+| `memory` | 同 storage（collection 預設 `memories`） | 同 storage（目前 alias 到 storage） |
+| `reply` | `text` / `template` | 回覆文字，支援 `${key}` 與 `{key}` 兩種模板插值，流程結束 |
+| `dummy` | - | 標記節點，無副作用 |
+
+#### 11.3.1 範例：回應祝賀及問安（完整節點鏈）
+
+```
+skill_flows/回應祝賀及問安 (key = base64url('回應祝賀及問安')):
+  trigger 「接收觸發事件」
+  → condition 「① 檢查完整性」(expression: type in [...] && content.festival 或 content.period 存在)
+  → storage 「② 儲存至問候資料庫」(collection: greeting_cards, accountIsolation: true)
+  → function 「③ SeaweedFS 連結確認」(code: // verifySeaweedFS(imageUri))
+  → condition 「來源是否為 LINE？」(expression: source === 'LINE 圖片' || source === 'LINE 文字')
+  → llm 「④ 生成個人化祝賀」(systemPrompt: 你是親切的業務助理..., temperature: 0.7)
+  → condition 「⑤ 檢查回覆完整度」(expression: llm_output 非空且長度 ≥ 5)
+  → reply 「⑥ 發送祝賀」(template: {llm_output})
+  → reply 「⑥ Fallback 回覆」(template: 感謝您的祝福，也祝您一切順心！)
+  → function 「記錄錯誤日誌」
+  → dummy 「排程推送／結束」
+```
+
+**已驗證**：以上流程完整跑通，LLM 真的呼叫並生成「中秋佳節，月圓人團，願您與家人共享這美好時光」。FlowEditor 改 systemPrompt 立即生效（已用 MARKER 探測確認）。
 
 #### 11.4 範例：image-router（process 分流）
 
@@ -383,9 +410,12 @@ skill_flows/image-router 節點:
 #### 11.6 注意
 
 - flow 的 `_key` = `Buffer.from(flowId).toString('base64url')`（與 `loadFlowConfig` 同規則）
-- reply 模板用 `${key}` 插值（複用 `skillExecutor.interpolate`），非 `{key}`
+- reply 模板用 `${key}` 或 `{key}` 插值（複用 `skillExecutor.interpolate`，兩種格式皆支援）
 - **script 在 `node:vm` sandbox 執行**，只暴露白名單：`args` / `callSkill(id, args)` / `log`
 - skill 執行失敗（flow 不存在 / script 錯誤）時 `matchIntentBehavior` 回 null，fallback 到主 agent
+- **FlowEditor 改 llm 節點的 systemPrompt 真的會影響輸出**（已用 MARKER 探測驗證）
+- llm 節點輸出同時寫入 `context[nodeId]` 與 `context['llm_output']`，向後相容舊模板 `{llm_output}`
+- process executor 的 skill（如 `greeting-card`）會走 process flow，讓 DB 的節點配置（含 systemPrompt）生效
 
 ## 文件索引
 
