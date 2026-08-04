@@ -17,6 +17,7 @@
 | 5 | [`broadcast-tab-spec.md`](broadcast-tab-spec.md) | 發送 Tab、新建群發、節日群發、定期問安、公告群發 |
 | 6 | [`workspace-tab-spec.md`](workspace-tab-spec.md) | 工作區 Tab、設定、新聞追蹤設置、時間設置 |
 | 7 | [`card-holder-spec.md`](card-holder-spec.md) | 名片夾、賀卡/問候庫、掃一掃 |
+| 8 | [`斜線指令.md`](斜線指令.md) | `/` 指令系統（多輪互動、選單、pendingArg 狀態）|
 
 ## 頁面對應表
 
