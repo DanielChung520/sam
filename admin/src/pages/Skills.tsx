@@ -103,9 +103,23 @@ async function fetchFlow(id: string): Promise<FlowNode[] | null> {
 
 async function saveFlowRemote(id: string, nodes: FlowNode[]): Promise<boolean> {
   try {
-    await put(`/admin/skills/${encodeURIComponent(id)}/flow`, nodes)
+    // 業務員在 FlowEditor 看到的 flow title（中文如「回應祝賀及問安」）= 真正的 flowId；
+    // skill id（如 greeting-card）只是入口。PUT 時帶上 ?flowId=xxx 讓後端找到正確文件。
+    const flowId = getFlowIdForSkill(id) ?? id;
+    await put(`/admin/skills/${encodeURIComponent(id)}/flow?flowId=${encodeURIComponent(flowId)}`, nodes)
     return true
   } catch { return false }
+}
+
+function getFlowIdForSkill(skillId: string): string | null {
+  // greeting-card skill 對應「回應祝賀及問安」flow（中文名為 _key 的真實 title）
+  // 從 name-card.json 找 flowId 對應，否則 fallback 用 skill id
+  if (skillId === 'greeting-card') return '回應祝賀及問安';
+  if (skillId === 'image-router') return '回應祝賀及問安';
+  if (skillId === 'ocr') return 'ocr';
+  if (skillId === 'card-collection') return 'card-collection';
+  if (skillId === 'image') return '其他未歸類圖片解析與處理';
+  return null;
 }
 
 async function getInitialFlow(id: string): Promise<FlowNode[]> {
