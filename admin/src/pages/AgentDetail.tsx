@@ -56,7 +56,7 @@ interface IntentRuleItem {
     patterns: string[]
   }
   behavior: {
-    action: 'agent' | 'skill' | 'llm' | 'script'
+    action: 'agent' | 'skill' | 'llm'
     target: string
     params?: Record<string, unknown>
   }
@@ -549,11 +549,10 @@ export function AgentDetail({
                         <option value="llm">LLM</option>
                         <option value="skill">Skills</option>
                         <option value="agent">Sub-Agent</option>
-                        <option value="script">Script (流程)</option>
                       </select>
                       <input
                         className="form-input"
-                        placeholder="目標（agent 名 / skill id / flow id / llm 提示）"
+                        placeholder="目標（agent 名 / skill id / llm 提示）"
                         value={rule.behavior.target}
                         onChange={(e) =>
                           setIntents(

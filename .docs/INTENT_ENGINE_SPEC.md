@@ -69,9 +69,8 @@ interface IntentRule {
 | action | 執行 | target 語意 |
 |--------|------|------------|
 | `llm` | 主 agent 處理，systemContext 帶意圖提示 | LLM 提示文字（可留空） |
-| `skill` | 走 slash 路由 `/${target} ${text}` | skill id（如 web-search、card-collection） |
+| `skill` | 直接執行 skill（process/script/inline executor）| skill id（如 image-router、web-search）|
 | `agent` | 委派 sub-agent | agent 名（如 sirius、deneb） |
-| `script` | 跑 flowRunner（skill_flows 流程）| flow id（如 image-router，見 AGENTS.md §11） |
 
 ## 3. 檔案對應
 

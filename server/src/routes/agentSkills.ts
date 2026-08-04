@@ -14,7 +14,7 @@ interface SkillDto {
   description: string;
   triggers: string[];
   enabled: boolean;
-  executorType: 'inline' | 'taskforge' | 'http';
+  executorType: 'inline' | 'taskforge' | 'http' | 'process' | 'script';
   parameters: Array<{ name: string; type: string; required: boolean; description: string }>;
   timeoutMs?: number;
 }

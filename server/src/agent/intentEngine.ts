@@ -13,7 +13,7 @@ import { findAgentById } from '../data/agentRepo.js';
 const POLARIS_KEY = 'agent_polaris';
 
 export type MessageType = 'text' | 'image' | 'video' | 'audio' | 'file' | 'location' | 'sticker';
-export type IntentAction = 'agent' | 'skill' | 'llm' | 'script';
+export type IntentAction = 'agent' | 'skill' | 'llm';
 
 export interface IntentRule {
   id: string;

@@ -559,27 +559,24 @@ export class PolarisPipeline {
       if (!match) return null;
       const { rule } = match;
 
-      // script → 跑 flowRunner（skill_flows collection）
-      if (rule.behavior.action === 'script') {
-        const { runFlow } = await import('./flowRunner.js');
-        const flowResult = await runFlow({
-          flowId: rule.behavior.target,
-          args: { ...input, text },
-        });
-        if (flowResult.ok) {
+      // skill → 直接執行 skill（process/script/inline executor 皆可），
+      // 不在 registry 的 target（如 slash 指令）才 fallback 到 slash 路由
+      if (rule.behavior.action === 'skill') {
+        const { getSkillRegistry } = await import('./skillRegistry.js');
+        const { getSkillExecutor } = await import('./skillExecutor.js');
+        const registry = await getSkillRegistry();
+        const skill = registry.get(rule.behavior.target);
+        if (skill) {
+          const executor = getSkillExecutor();
+          const result = await executor.execute(skill, { ...input, text }, defaultFlowConversation(input));
           return {
-            text: flowResult.output,
+            text: result.output,
             intent: { type: 'chitchat' },
             conversationId: input.conversationId ?? input.userId,
             state: 'idle',
             reset: false,
           };
         }
-        return null;
-      }
-
-      // skill → 走 slash 路由（reuse resolveSlashCommand 格式）
-      if (rule.behavior.action === 'skill') {
         return await this.handleSlash(input, `/${rule.behavior.target} ${text}`.trim());
       }
 
@@ -693,6 +690,21 @@ export class PolarisPipeline {
   private formatClarifyMessage(text: string): string {
     return `我不太確定您的意思。請換個方式說明，或用 / 看可用指令。`;
   }
+}
+
+function defaultFlowConversation(input: HandleMessageInput): Conversation {
+  const now = Date.now();
+  return {
+    id: `${input.channelId}:${input.userId ?? 'anon'}`,
+    channelId: input.channelId,
+    userId: input.userId ?? '',
+    state: 'idle',
+    history: [],
+    context: {},
+    createdAt: now,
+    updatedAt: now,
+    expiresAt: now + 1800000,
+  };
 }
 
 export function formatRetrievedContext(ctx: RetrievedContext): string {

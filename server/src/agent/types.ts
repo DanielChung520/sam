@@ -50,7 +50,9 @@ export interface SkillParameter {
 export type SkillExecutor =
   | { type: 'inline'; handler: string }
   | { type: 'taskforge'; tasks: TaskforgeTaskSpec[]; goal?: string }
-  | { type: 'http'; url: string; method: 'GET' | 'POST'; headers?: Record<string, string> };
+  | { type: 'http'; url: string; method: 'GET' | 'POST'; headers?: Record<string, string> }
+  | { type: 'process'; flowId: string }
+  | { type: 'script'; code: string; language?: 'js' | 'ts' };
 
 export interface TaskforgeTaskSpec {
   id: string;

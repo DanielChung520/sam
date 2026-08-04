@@ -1,9 +1,11 @@
 // sam LINE Agent — Skill Executor
 //
-// 支援三種 executor type：
+// 支援五種 executor type：
 //   - inline:      內部函式（已註冊 handler）
 //   - taskforge:   呼叫 taskforge sub-agent
 //   - http:        外部 HTTP API
+//   - process:     跑 skill_flows 流程（flowRunner）
+//   - script:      vm sandbox 執行 AI 生成的程式碼（白名單：args/callSkill/log）
 
 import type {
   Conversation,
@@ -14,6 +16,7 @@ import type {
 } from './types.js';
 import { AgentError, toAgentError } from './errors.js';
 import { Metrics } from '../lib/metrics.js';
+import { getSkillRegistry } from './skillRegistry.js';
 
 export type InlineSkillHandler = (
   args: Record<string, unknown>,
@@ -104,9 +107,58 @@ private async executeInner(
     if (executor.type === 'http') {
       return this.executeHttp(executor, args, timeoutMs);
     }
+    if (executor.type === 'process') {
+      return this.executeProcess(executor.flowId, args);
+    }
+    if (executor.type === 'script') {
+      return this.executeScript(executor.code, args);
+    }
     throw new AgentError('SKILL_NOT_FOUND', 'unknown executor type', {
       context: { executor },
     });
+  }
+
+  // process → 跑 skill_flows 流程（flowRunner）
+  private async executeProcess(
+    flowId: string,
+    args: Record<string, unknown>,
+  ): Promise<SkillExecutionResult> {
+    const { runFlow } = await import('./flowRunner.js');
+    const result = await runFlow({ flowId, args });
+    if (!result.ok) {
+      throw new AgentError('SKILL_EXECUTION_FAILED', `flow failed: ${flowId}`, {
+        context: { flowId, error: result.error },
+      });
+    }
+    return { ok: true, output: result.output };
+  }
+
+  // script → vm sandbox 執行 AI 生成的程式碼（白名單：args/callSkill/log）
+  private async executeScript(
+    code: string,
+    args: Record<string, unknown>,
+  ): Promise<SkillExecutionResult> {
+    const vm = await import('node:vm');
+    const sandboxLogs: string[] = [];
+    const sandbox: Record<string, unknown> = {
+      args,
+      log: (...xs: unknown[]) => sandboxLogs.push(xs.map(String).join(' ')),
+      callSkill: async (skillId: string, skillArgs: Record<string, unknown> = {}) => {
+        const registry = await getSkillRegistry();
+        const skill = registry.get(skillId);
+        if (!skill) throw new AgentError('SKILL_NOT_FOUND', `skill not found: ${skillId}`);
+        return this.execute(skill, { ...args, ...skillArgs }, defaultScriptConversation());
+      },
+    };
+    const context = vm.createContext(sandbox);
+    // 包成 async IIFE 以支援 await
+    const wrapped = `(async () => { ${code}\n})()`;
+    const result = await vm.runInContext(wrapped, context, { timeout: 30_000 });
+    const output = typeof result === 'string' ? result : JSON.stringify(result ?? '');
+    return {
+      ok: true,
+      output: output === '""' ? sandboxLogs.join('\n') : output,
+    };
   }
 
   private async executeTaskforge(
@@ -290,4 +342,19 @@ function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
     }
   }
   return current;
+}
+
+function defaultScriptConversation(): Conversation {
+  const now = Date.now();
+  return {
+    id: `script_${now}`,
+    channelId: '',
+    userId: '',
+    state: 'idle',
+    history: [],
+    context: {},
+    createdAt: now,
+    updatedAt: now,
+    expiresAt: now + 1800000,
+  };
 }

@@ -320,19 +320,36 @@ interface NodePropSchema {
 - 技能層級定義 `inputSchema` / `outputSchema`（見 `admin/src/data/skill-catalog.ts`），顯示於 FlowEditor 右側欄頂部的「📥 輸入規格 / 📤 輸出規格」面板。
 - 節點層級的屬性 desc 也應描述該節點處理的資料格式（輸入吃什麼 / 輸出吐什麼）。
 
-### 11. Script Flow 範式（憲法級）
+### 11. Process / Script 執行範式（憲法級）
 
-意圖規則的 `behavior.action: 'script'` 可執行 `skill_flows` collection 中的流程定義，
-由 **Flow Runner**（`server/src/agent/flowRunner.ts`）依序執行節點。這是「多 skill 分流」的標準作法。
+Skill 的 executor 可為 `process`（流程節點）或 `script`（程式碼），兩者都是 skill 的一部分，
+由 **Skill Executor**（`server/src/agent/skillExecutor.ts`）統一執行。意圖規則只需 `behavior.action: 'skill'`，
+target = skill id — 內部是流程還是程式碼由 skill 定義決定。
 
-#### 11.1 為什麼用 Script（而非 Sub-Agent）
+#### 11.1 Process vs Script 定位
 
-- **單一輸入、多路分流**：當一個訊息型別需要「先解析、再依結果走不同 skill」（如 image → OCR → 名片/賀卡/其他），
-  意圖規則的行為只有單一路徑，無法表達分叉 → 用 script flow 包住分流邏輯。
-- **輕量**：不需 sub-agent 的 LLM 對話鏈，直接依序執行 skill，延遲低。
-- **可視化**：流程節點可在 Skills 流程編輯器（FlowEditor）檢視/微調，分流條件清楚。
+| | **Process（流程節點）** | **Script（程式碼）** |
+|---|---|---|
+| 本質 | **配置化**（可視化、參數可調）| **固化**（寫好就穩定）|
+| 用途 | 一般主要用法 | 特定目的、流程難表達的邏輯 |
+| 參數 | 節點 config 設置（業務員可在 FlowEditor 微調）| 代碼內固定（或白名單 args）|
+| 變動 | 業務員可調整 | **盡量不輕易動** |
+| 適用 | 分流、skill 組合、可調流程 | 資料轉換、條件組合、核心邏輯 |
 
-#### 11.2 Flow Runner 支援的節點型別（精簡版）
+- **誰能建 script？** 只有工程/AI 生成，不開放一般業務員（避免誤改核心邏輯）
+- **process** 適合「單一輸入、多路分流」：如 image → OCR → 依結果走不同 skill
+
+#### 11.2 Skill Executor 支援的型別
+
+| executor | config 欄位 | 執行方式 |
+|----------|------------|---------|
+| `inline` | `handler` | 註冊的內部函式 |
+| `taskforge` | `tasks` / `goal` | taskforge sub-agent |
+| `http` | `url` / `method` | 外部 HTTP API |
+| `process` | `flowId` | **flowRunner** 執行 skill_flows 節點（skill/condition/reply）|
+| `script` | `code` | **vm sandbox** 執行 AI 生成的程式碼 |
+
+#### 11.3 Flow Runner 支援的節點型別（精簡版）
 
 | 節點 | config 欄位 | 行為 |
 |------|------------|------|
@@ -340,10 +357,11 @@ interface NodePropSchema {
 | `condition` | `field` / `operator`（eq/ne/contains/notContains/empty/notEmpty）/ `value` / `onTrue` / `onFalse` | 依 `context[field]` 判斷，跳轉到指定節點 id |
 | `reply` | `text` | 回覆文字（支援 `${key}` 模板插值），流程結束 |
 
-#### 11.3 範例：image-router（圖片分流）
+#### 11.4 範例：image-router（process 分流）
 
 ```
-意圖規則: messageType=image → behavior.action=script, target=image-router
+意圖規則: messageType=image → behavior.action=skill, target=image-router
+skill「image-router」: executor = { type: 'process', flowId: 'image-router' }
 
 skill_flows/image-router 節點:
   trigger 「接收圖片」
@@ -354,18 +372,20 @@ skill_flows/image-router 節點:
   → reply 其他 ${ocr}
 ```
 
-#### 11.4 建立 Script Flow 的步驟
+#### 11.5 建立 Process / Script Skill 的步驟
 
-1. **意圖規則**：AgentDetail 意圖 tab → 行為選「Script (流程)」→ target 填 flow id（如 `image-router`）
-2. **流程定義**：寫入 `skill_flows` collection（key = base64url(flowId)，nodes = FlowNode[]）
-   - 可先寫 `admin/skills/*.json` 定義檔，或直接用 AI 討論生成後 PATCH collection
-3. **驗證**：`runFlow({ flowId, args })` 可單獨測試；condition 分流可用 mock 輸出測各分支
+1. **意圖規則**：AgentDetail 意圖 tab → 行為選「Skills」→ target 填 skill id（如 `image-router`）
+2. **skill 定義**：
+   - `process`：寫入 `skill_flows` collection（key = base64url(flowId)，nodes = FlowNode[]）
+   - `script`：manifest executor 設 `{ type: 'script', code }`（code 由 AI 生成，固化）
+3. **驗證**：`runFlow({ flowId, args })` 可單獨測流程；script 用 `getSkillExecutor().execute()` 測
 
-#### 11.5 注意
+#### 11.6 注意
 
 - flow 的 `_key` = `Buffer.from(flowId).toString('base64url')`（與 `loadFlowConfig` 同規則）
 - reply 模板用 `${key}` 插值（複用 `skillExecutor.interpolate`），非 `{key}`
-- flow 執行失敗（flow 不存在）時 `matchIntentBehavior` 回 null，fallback 到主 agent
+- **script 在 `node:vm` sandbox 執行**，只暴露白名單：`args` / `callSkill(id, args)` / `log`
+- skill 執行失敗（flow 不存在 / script 錯誤）時 `matchIntentBehavior` 回 null，fallback 到主 agent
 
 ## 文件索引
 
@@ -383,6 +403,7 @@ skill_flows/image-router 節點:
 
 | 日期 | 版本 | 更新者 | 變更內容 |
 |------|------|--------|----------|
+| 2026-08-04 | 1.6.0 | Sisyphus | 11. Script Flow 範式改寫為「Process / Script 執行範式」：process=配置化(可調)、script=固化(穩定)，兩者皆為 skill executor；意圖行為收斂回 agent/skill/llm |
 | 2026-08-04 | 1.5.0 | Sisyphus | 新增 11. Script Flow 範式（憲法級）：flowRunner 節點、image-router 範例、建立步驟；移除斷裂連結 AGENT_LAYER_ARCHITECTURE.md；更新目前階段 |
 | 2026-08-03 | 1.3.0 | Sisyphus | 10.1 明確「不做流程建置」定位（vs n8n）；10.4 導入格式擴充 Markdown/XML/JSON/YAML + 導入後微調流程 |
 | 2026-08-03 | 1.2.0 | Sisyphus | 新增 10. 流程節點屬性規範（憲法級）：節點屬性欄、schema 驅動、AI 生成/外部導入 XML/JSON |
