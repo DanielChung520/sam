@@ -1,10 +1,12 @@
 // Built-in skill: greeting-card
-// 賀卡/問安卡個人化祝賀 — 依收卡人稱呼/性別/年齡段生成文雅祝賀，含品質重試與通知主身。
-// 由 image-router script 分流呼叫（ocr parseOnly → 依 type 判斷賀卡 → 呼叫本 skill）。
+// 賀卡/問安卡個人化祝賀 — 委派給 process flow「回應祝賀及問安」（DB 配置 prompt）。
+// 讓業務員在 FlowEditor 改 systemPrompt 真的生效。
 
 import type { SkillManifest } from '../../types.js';
 import { registerInlineHandler } from '../../skillExecutor.js';
-import { generatePersonalizedGreeting, isGreetingType } from '../../greetingService.js';
+import { isGreetingType } from '../../greetingService.js';
+
+const FLOW_ID = '回應祝賀及問安';
 
 const handler = async (args: Record<string, unknown>): Promise<{ ok: boolean; output: string }> => {
   const input = args as unknown as {
@@ -24,26 +26,29 @@ const handler = async (args: Record<string, unknown>): Promise<{ ok: boolean; ou
   }
 
   try {
-    const { loadFlowConfig } = await import('../../skillConfig.js');
-    const flowConfig = await loadFlowConfig('ocr');
-    const result = await generatePersonalizedGreeting({
-      type,
-      festival: input.festival,
-      greeting_period: input.greeting_period,
-      greeting_content: input.greeting_content,
-      summary: input.summary,
-      channelId: input.channelId ?? 'unknown',
-      userId: input.userId ?? 'unknown',
-      modelConfig: {
-        apiBase: (flowConfig.apiBase as string) ?? undefined,
-        apiKey: (flowConfig.apiKey as string) ?? undefined,
-        model: (flowConfig.model as string) ?? undefined,
+    // 委派給 process flow（DB skill_flows 集合「回應祝賀及問安」）
+    // 流程圖的 llm 節點 systemPrompt 由業務員在 FlowEditor 配置
+    const { runFlow } = await import('../../flowRunner.js');
+    const flowResult = await runFlow({
+      flowId: FLOW_ID,
+      args: {
+        type,
+        festival: input.festival,
+        greeting_period: input.greeting_period,
+        greeting_content: input.greeting_content,
+        summary: input.summary,
+        imageUri: input.media?.receivedAt ? `media/${input.channelId}/test` : undefined,
+        timestamp: Date.now(),
+        userAccount: input.userId,
+        channelId: input.channelId,
+        businessOwnerId: input.channelId,
+        source: 'LINE 圖片',
       },
     });
-    if (result.ok && result.reply) {
-      return { ok: true, output: result.reply };
+    if (flowResult.ok && flowResult.output) {
+      return { ok: true, output: flowResult.output };
     }
-    return { ok: true, output: `已收到您的祝福卡片，誠心感謝！${result.reason ? `（${result.reason}）` : ''}` };
+    return { ok: true, output: `已收到您的祝福卡片，誠心感謝！${flowResult.error ? `（${flowResult.error}）` : ''}` };
   } catch (e) {
     console.warn('[greeting-card] failed:', e);
     return { ok: true, output: '已收到您的祝福卡片，誠心感謝！' };
@@ -55,7 +60,7 @@ registerInlineHandler('greeting-card', handler);
 const manifest: SkillManifest = {
   id: 'greeting-card',
   name: '賀卡祝賀',
-  description: '依收卡人稱呼/性別/年齡段生成個人化文雅祝賀回覆',
+  description: '依收卡人稱呼/性別/年齡段生成個人化文雅祝賀回覆（委派 process flow）',
   triggers: ['問安卡', '祝福賀卡', '賀卡'],
   parameters: [
     { name: 'type', type: 'string', required: true, description: 'OCR 分類（問安卡/祝福賀卡）' },
