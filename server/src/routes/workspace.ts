@@ -14,7 +14,7 @@ import {
   upsertSubscription,
   listNewsItems,
 } from '../data/newsRepo.js';
-import { fetchAllTopics } from '../agent/newsService.js';
+import { fetchAllTopics, pushNewsToUser } from '../agent/newsService.js';
 import { getChannelId } from '../lib/authJwt.js';
 import { logger } from '../agent/logger.js';
 
@@ -97,7 +97,6 @@ router.patch('/news/subscription', async (req: any, res: any) => {
       analysisPrompt: typeof body.analysisPrompt === 'string' ? body.analysisPrompt : undefined,
       schedule: body.schedule ?? undefined,
       enabled: typeof body.enabled === 'boolean' ? body.enabled : undefined,
-      pushToOwner: typeof body.pushToOwner === 'boolean' ? body.pushToOwner : undefined,
     });
     res.json({ data: updated });
   } catch (e) {
@@ -121,6 +120,25 @@ router.post('/news/fetch', async (req: any, res: any) => {
     );
   } catch (e) {
     logger.error('news.fetch.start.failed', { channelId, error: String(e) });
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// POST /api/v1/news/push - 手動把最新新聞推播給指定好友（業務員挑選）
+router.post('/news/push', async (req: any, res: any) => {
+  const channelId = requireChannel(req, res);
+  if (!channelId) return;
+  const userId = req.body?.userId;
+  if (!userId || typeof userId !== 'string') {
+    return res.status(400).json({ error: 'userId required' });
+  }
+  try {
+    res.json({ ok: true, message: 'push started' });
+    pushNewsToUser(channelId, userId).catch((e) =>
+      logger.error('news.push.route.failed', { channelId, error: String(e) })
+    );
+  } catch (e) {
+    logger.error('news.push.start.failed', { channelId, error: String(e) });
     res.status(500).json({ error: String(e) });
   }
 });

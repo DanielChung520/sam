@@ -8,7 +8,6 @@
 import { chatCompletion } from './llmClient.js';
 import { searchWeb, type SearchResultItem } from './skills/manifests/webSearch.js';
 import { upsertNewsItem, listNewsItems, type NewsSubscription } from '../data/newsRepo.js';
-import { findPrimaryContact } from '../data/contactRepo.js';
 import { getClientByChannelKey } from '../lib/lineClient.js';
 import { chunkForLine } from './responseFormatter.js';
 import { logger } from './logger.js';
@@ -59,24 +58,19 @@ export async function fetchAllTopics(channelId: string, sub: NewsSubscription): 
       logger.warn('news.topic_failed', { channelId, topic, error: String(e) });
     }
   }
-  // 「發送主身」：抓取完成後將最新新聞推播到主身好友（isPrimary=true）
-  if (sub.pushToOwner) {
-    await pushLatestNewsToOwner(channelId);
-  }
 }
 
-/** 推播最新新聞到主身好友（isPrimary=true，無主身時跳過） */
-async function pushLatestNewsToOwner(channelId: string): Promise<void> {
+/** 推播最新新聞到指定好友（業務員手動挑選） */
+export async function pushNewsToUser(channelId: string, userId: string): Promise<void> {
   try {
     const cc = await getClientByChannelKey(channelId);
     if (!cc) return;
-    const owner = await findPrimaryContact(channelId);
-    if (!owner) {
-      logger.warn('news.push_owner.no_primary', { channelId });
+    if (!userId) {
+      logger.warn('news.push.no_user', { channelId });
       return;
     }
     if (cc.channel.pushEnabled === false) {
-      logger.warn('news.push_owner.disabled', { channelId });
+      logger.warn('news.push.disabled', { channelId });
       return;
     }
     const items = await listNewsItems(channelId, 5);
@@ -89,13 +83,13 @@ async function pushLatestNewsToOwner(channelId: string): Promise<void> {
     const header = '📰 最新新聞追蹤\n\n';
     for (const chunk of chunkForLine(header + lines.join('\n\n'))) {
       await cc.client.pushMessage({
-        to: owner.userId,
+        to: userId,
         messages: [{ type: 'text', text: chunk }],
       });
     }
-    logger.info('news.push_owner.done', { channelId, to: owner.userId, count: items.length });
+    logger.info('news.push.done', { channelId, to: userId, count: items.length });
   } catch (e) {
-    logger.error('news.push_owner.failed', { channelId, error: String(e) });
+    logger.error('news.push.failed', { channelId, to: userId, error: String(e) });
   }
 }
 

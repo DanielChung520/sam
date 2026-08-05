@@ -2,11 +2,11 @@ import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  Switch,
+  Modal,
+  Image,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Screen } from '@/components/Screen';
@@ -16,7 +16,15 @@ import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons';
-import { getNews, getNewsSubscription, saveNewsSubscription, triggerNewsFetch, type NewsItem } from '@/utils/api';
+import {
+  getNews,
+  getNewsSubscription,
+  triggerNewsFetch,
+  getContacts,
+  pushNewsToUser,
+  type NewsItem,
+  type ContactListItem,
+} from '@/utils/api';
 export default function NewsScreen() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,7 +32,11 @@ export default function NewsScreen() {
   const [activeTab, setActiveTab] = useState('全部');
   const [tabs, setTabs] = useState<string[]>(['全部']);
   const [showMenu, setShowMenu] = useState(false);
-  const [pushToOwner, setPushToOwner] = useState(false);
+  const [showPushModal, setShowPushModal] = useState(false);
+  const [pushContacts, setPushContacts] = useState<ContactListItem[]>([]);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [pushSending, setPushSending] = useState(false);
+  const [pushMsg, setPushMsg] = useState('');
   const router = useSafeRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -70,6 +82,27 @@ export default function NewsScreen() {
       paddingHorizontal: 14,
     },
     menuItemText: { fontSize: 14, color: c.text, fontWeight: '500' },
+    modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+    modalSheet: {
+      backgroundColor: c.bg,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      padding: 24,
+      paddingBottom: 24,
+      maxHeight: 480,
+    },
+    modalTitle: { fontSize: 18, fontWeight: '700', color: c.text, marginBottom: 4 },
+    modalSubtitle: { fontSize: 12, color: c.textSecondary, marginBottom: 16 },
+    pushContactItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 10,
+    },
+    pushContactAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.bgSecondary },
+    pushContactName: { fontSize: 15, fontWeight: '600', color: c.text },
+    pushContactMeta: { fontSize: 12, color: c.textSecondary, marginTop: 2 },
+    pushMsgText: { fontSize: 13, color: c.sky, marginTop: 12, textAlign: 'center' },
     // alignItems: 'flex-start' 防止 horizontal FlatList 膠囊被 stretch 壓扁（RNW scroll content 預設 stretch）
     tabs: { paddingHorizontal: 16, gap: 8, marginBottom: 16, alignItems: 'flex-start' },
     tabBtn: {
@@ -145,23 +178,43 @@ export default function NewsScreen() {
       setTabs((prev) =>
         prev.length === next.length && prev.every((t, i) => t === next[i]) ? prev : next
       );
-      if (typeof data?.pushToOwner === 'boolean') setPushToOwner(data.pushToOwner);
     } catch (e) {
       console.error('Failed to load news tabs:', e);
     }
   }, []);
 
-  // 發送主身：每次抓取後將最新新聞推播到主身帳號
-  const togglePushToOwner = useCallback(async (value: boolean) => {
-    setPushToOwner(value);
+  // 發送主身：開啟好友選擇 modal，挑選後把最新新聞推播給該好友
+  const openPushModal = useCallback(async () => {
     setShowMenu(false);
+    setPushMsg('');
+    setShowPushModal(true);
+    setPushLoading(true);
     try {
-      await saveNewsSubscription({ pushToOwner: value });
+      const { data } = await getContacts();
+      setPushContacts(data);
     } catch (e) {
-      console.error('Failed to save pushToOwner:', e);
-      setPushToOwner(!value);
+      console.error('Failed to load contacts for push:', e);
+      setPushMsg('無法載入好友清單');
+    } finally {
+      setPushLoading(false);
     }
   }, []);
+
+  const sendPushToContact = useCallback(async (contactId: string) => {
+    if (pushSending) return;
+    setPushSending(true);
+    setPushMsg('');
+    try {
+      await pushNewsToUser(contactId);
+      setPushMsg('已發送最新新聞到該好友');
+      setTimeout(() => setShowPushModal(false), 800);
+    } catch (e) {
+      console.error('Failed to push news:', e);
+      setPushMsg('發送失敗，請稍後再試');
+    } finally {
+      setPushSending(false);
+    }
+  }, [pushSending]);
 
   // 即時更新：觸發 server 抓取最新新聞 → 輪詢直到完成 → 重新載入列表
   const handleRefresh = useCallback(async () => {
@@ -252,17 +305,13 @@ export default function NewsScreen() {
             <FontAwesome6 name="clock" size={14} color={colors.accent} />
             <Text style={styles.menuItemText}>時間設置</Text>
           </TouchableOpacity>
-          <View style={styles.menuItem}>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={openPushModal}
+          >
             <FontAwesome6 name="paper-plane" size={14} color={colors.sky} />
             <Text style={styles.menuItemText}>發送主身</Text>
-            <Switch
-              value={pushToOwner}
-              onValueChange={togglePushToOwner}
-              trackColor={{ false: colors.bgInput, true: colors.sky }}
-              thumbColor={colors.surface}
-              style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-            />
-          </View>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -303,6 +352,60 @@ export default function NewsScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      <Modal
+        visible={showPushModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPushModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 24 }]}>
+            <Text style={styles.modalTitle}>發送主身</Text>
+            <Text style={styles.modalSubtitle}>選擇好友，將最新新聞推播給該好友</Text>
+
+            {pushLoading ? (
+              <View style={{ paddingVertical: 30, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color={colors.sky} />
+              </View>
+            ) : (
+              <FlatList
+                data={pushContacts}
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.pushContactItem}
+                    activeOpacity={0.6}
+                    disabled={pushSending}
+                    onPress={() => sendPushToContact(item.id.toString())}
+                  >
+                    <View style={styles.pushContactAvatar}>
+                      {item.avatar ? (
+                        <Image source={{ uri: item.avatar }} style={styles.pushContactAvatar} />
+                      ) : null}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={styles.pushContactName}>{item.name}</Text>
+                        {item.isPrimary && (
+                          <FontAwesome6 name="crown" size={12} color={colors.accent} />
+                        )}
+                      </View>
+                      <Text style={styles.pushContactMeta}>
+                        {item.company || item.title || 'LINE 好友'}
+                      </Text>
+                    </View>
+                    <FontAwesome6 name="paper-plane" size={14} color={colors.sky} />
+                  </TouchableOpacity>
+                )}
+                showsVerticalScrollIndicator={false}
+              />
+            )}
+
+            {pushMsg ? <Text style={styles.pushMsgText}>{pushMsg}</Text> : null}
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }

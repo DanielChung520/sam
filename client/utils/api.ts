@@ -225,7 +225,6 @@ export interface NewsSubscription {
     tzOffset: number;
   };
   enabled?: boolean;
-  pushToOwner?: boolean;
   lastRunAt?: number;
 }
 
@@ -241,6 +240,11 @@ export async function saveNewsSubscription(fields: Partial<Omit<NewsSubscription
 
 export async function triggerNewsFetch() {
   const json = await request<{ ok: boolean; message: string }>('POST', '/news/fetch');
+  return { data: json };
+}
+
+export async function pushNewsToUser(userId: string) {
+  const json = await request<{ ok: boolean; message: string }>('POST', '/news/push', { userId });
   return { data: json };
 }
 
