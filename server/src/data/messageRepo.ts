@@ -10,9 +10,15 @@ export interface Message {
   channelId: string;
   userId: string;                  // 客戶 LINE userId
   direction: 'in' | 'out';         // in=客戶傳來, out=我們發送
-  type: string;                    // text | image | audio | file ...
+  type: string;                    // text | image | audio | video | file | sticker | location ...
   text?: string;
+  location?: { title?: string; address?: string; latitude: number; longitude: number };
   mediaStorageKey?: string;        // 多媒體：SeaweedFS storage key
+  fileId?: string;                 // 多媒體：ArangoDB files collection fileId（供 /api/v1/files/{fileId} 讀取）
+  contentType?: string;            // 多媒體：image/jpeg、video/mp4、audio/mp4 ...
+  fileName?: string;               // 多媒體：原始檔名（file 訊息才有）
+  fileSize?: number;               // 多媒體：檔案大小（bytes）
+  durationMs?: number;             // 多媒體：音訊/影音長度（LINE duration, ms）
   replyToken?: string;
   messageId?: string;              // LINE message id
   createdAt: number;
@@ -43,6 +49,22 @@ export async function listMessages(channelId: string, userId: string, limit = 10
     { cid: channelId, uid: userId, limit },
   );
   return (await cursor.all()) as Message[];
+}
+
+/**
+ * 媒體下載完成後回寫 message 文件（webhook 先落庫空訊息，媒體存檔後補上 fileId / storageKey）。
+ * 用 UPDATE（PATCH 語意）只更新傳入欄位，不覆蓋其他欄位。
+ */
+export async function updateMessageMedia(
+  channelId: string,
+  userId: string,
+  messageId: string,
+  fields: Partial<Pick<Message, 'mediaStorageKey' | 'fileId' | 'contentType' | 'fileName' | 'fileSize' | 'durationMs'>>,
+): Promise<void> {
+  await ensureMessagesCollection();
+  const db = getDb();
+  const _key = `m:${channelId}:${userId}:${messageId}`;
+  await db.collection(COLLECTION).update(_key, fields);
 }
 
 /** 每用戶最後一則訊息（對話列表用） */

@@ -53,7 +53,8 @@ export default function GreetingCardsScreen() {
       alignItems: 'center',
     },
     headerTitle: { fontSize: 22, fontWeight: '600', color: c.text, letterSpacing: 0.2 },
-    categories: { paddingHorizontal: 16, gap: 8, marginBottom: 16 },
+    // alignItems: 'flex-start' 防止 horizontal FlatList 膠囊被 stretch 壓扁（RNW scroll content 預設 stretch）
+    categories: { paddingHorizontal: 16, gap: 8, marginBottom: 16, alignItems: 'flex-start' },
     catBtn: {
       paddingHorizontal: 14,
       paddingVertical: 6,

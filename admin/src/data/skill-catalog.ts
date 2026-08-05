@@ -36,7 +36,6 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     type: 'builtin',
     enabled: true,
     group: '客服',
-    hasFlow: true,
   },
   {
     id: 'knowledge-base',
@@ -48,7 +47,6 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     type: 'builtin',
     enabled: true,
     group: '客服',
-    hasFlow: true,
   },
   {
     id: 'ocr',
@@ -119,7 +117,6 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     type: 'builtin',
     enabled: true,
     group: '多媒體',
-    hasFlow: true,
   },
   {
     id: 'stt',
@@ -131,7 +128,6 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     type: 'builtin',
     enabled: true,
     group: '多媒體',
-    hasFlow: true,
   },
   {
     id: 'file-process',
@@ -143,7 +139,6 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     type: 'builtin',
     enabled: true,
     group: '多媒體',
-    hasFlow: true,
   },
 
   // ── Business（業務流程與生產力工具） ──
@@ -157,7 +152,6 @@ export const SKILL_CATALOG: SkillDefinition[] = [
     type: 'business',
     enabled: true,
     group: '整合',
-    hasFlow: true,
   },
 ]
 

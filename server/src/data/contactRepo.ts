@@ -26,6 +26,7 @@ export interface Contact {
   remark?: string;                 // 備註
   tags: string[];
   score: number;
+  isPrimary?: boolean;             // 主身（業務員本人）：每 channel 唯一
   lastMessageAt?: number;
   unreadCount: number;
   isBlocked: boolean;
@@ -83,6 +84,41 @@ export async function listContactsByChannel(channelId: string): Promise<Contact[
     { cid: channelId },
   );
   return (await cursor.all()) as Contact[];
+}
+
+/**
+ * 設定主身（業務員本人）：每 channel 唯一。
+ * 將該 channel 所有好友的 isPrimary 一次更新 — 只有目標好友為 true，其餘全設 false。
+ */
+export async function setPrimaryContact(channelId: string, userId: string, isPrimary: boolean): Promise<void> {
+  await ensureContactsCollection();
+  const db = getDb();
+  const targetKey = contactKey(channelId, userId);
+  if (!isPrimary) {
+    // 取消主身：只清目標好友
+    await db.query(
+      `FOR c IN ${COLLECTION} FILTER c.channelId == @cid AND c._key == @key UPDATE c WITH { isPrimary: false } IN ${COLLECTION}`,
+      { cid: channelId, key: targetKey },
+    );
+    return;
+  }
+  // 設為主身：同 channel 全量重寫 isPrimary（目標 true，其餘 false）
+  await db.query(
+    `FOR c IN ${COLLECTION} FILTER c.channelId == @cid UPDATE c WITH { isPrimary: c._key == @key } IN ${COLLECTION}`,
+    { cid: channelId, key: targetKey },
+  );
+}
+
+/** 查某 channel 的主身好友（isPrimary=true，每 channel 唯一） */
+export async function findPrimaryContact(channelId: string): Promise<Contact | null> {
+  await ensureContactsCollection();
+  const db = getDb();
+  const cursor = await db.query(
+    `FOR c IN ${COLLECTION} FILTER c.channelId == @cid AND c.isPrimary == true LIMIT 1 RETURN c`,
+    { cid: channelId },
+  );
+  const list = (await cursor.all()) as Contact[];
+  return list[0] ?? null;
 }
 
 export async function markContactUnread(channelId: string, userId: string, isUnread: boolean): Promise<void> {

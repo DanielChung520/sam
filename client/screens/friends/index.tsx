@@ -19,7 +19,7 @@ import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useChannel } from '@/contexts/ChannelContext';
 import { FontAwesome6 } from '@expo/vector-icons';
-import { getContacts } from '@/utils/api';
+import { getContacts, updateContact, type ContactListItem } from '@/utils/api';
 
 interface Contact {
   id: number;
@@ -31,6 +31,7 @@ interface Contact {
   avatar: string;
   lastMessage: string;
   lastMessageTime: string;
+  isPrimary?: boolean;
 }
 
 const TAG_OPTIONS = ['全部', 'VIP', '高意向', '決策者', '沉睡'];
@@ -41,6 +42,7 @@ export default function FriendsScreen() {
   const [activeTag, setActiveTag] = useState('全部');
   const [searchQuery, setSearchQuery] = useState('');
   const [showMenu, setShowMenu] = useState(false);
+  const [updatingPrimary, setUpdatingPrimary] = useState(false);
   const router = useSafeRouter();
   const { colors } = useTheme();
   const { activeChannel } = useChannel();
@@ -113,7 +115,8 @@ export default function FriendsScreen() {
       gap: 8,
     },
     searchInput: { flex: 1, fontSize: 14, color: c.text },
-    tagFilters: { flexDirection: 'row', gap: 8, marginTop: 12 },
+    // alignItems: 'flex-start' 防止 horizontal FlatList 膠囊被 stretch 壓扁（RNW scroll content 預設 stretch）
+    tagFilters: { flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'flex-start' },
     tagFilter: {
       paddingHorizontal: 14,
       paddingVertical: 6,
@@ -142,6 +145,28 @@ export default function FriendsScreen() {
       height: 50,
       borderRadius: 25,
       backgroundColor: c.bgSecondary,
+    },
+    avatarWrap: {
+      position: 'relative',
+      width: 50,
+      height: 50,
+    },
+    primaryBadge: {
+      position: 'absolute',
+      right: -4,
+      bottom: -4,
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: c.bgInputAlt,
+      borderWidth: 2,
+      borderColor: c.border,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    primaryBadgeActive: {
+      backgroundColor: c.accent,
+      borderColor: c.border,
     },
     contactInfo: { flex: 1, marginLeft: 12 },
     nameRow: {
@@ -177,6 +202,24 @@ export default function FriendsScreen() {
     }
   }, [activeTag, searchQuery]);
 
+  // 主身標記：點頭像右下角 badge 切換（server 端保證每 channel 唯一）
+  const togglePrimary = useCallback(async (contact: Contact) => {
+    if (updatingPrimary) return;
+    setUpdatingPrimary(true);
+    const next = !contact.isPrimary;
+    try {
+      await updateContact(String(contact.id), { isPrimary: next });
+      // 設為主身時，本機直接把其他好友的 isPrimary 清除
+      setContacts((prev) =>
+        prev.map((c) => (c.id === contact.id ? { ...c, isPrimary: next } : { ...c, isPrimary: next ? false : c.isPrimary }))
+      );
+    } catch (e) {
+      console.error('Failed to toggle primary:', e);
+    } finally {
+      setUpdatingPrimary(false);
+    }
+  }, [updatingPrimary]);
+
   useFocusEffect(
     useCallback(() => {
       fetchContacts();
@@ -189,7 +232,19 @@ export default function FriendsScreen() {
       onPress={() => router.push('/friend-detail', { contactId: item.id })}
       activeOpacity={0.7}
     >
-      <Image source={{ uri: item.avatar }} style={styles.avatar} />
+      <View style={styles.avatarWrap}>
+        <Image source={{ uri: item.avatar }} style={styles.avatar} />
+        <TouchableOpacity
+          style={[styles.primaryBadge, item.isPrimary && styles.primaryBadgeActive]}
+          onPress={(e) => { e.stopPropagation?.(); togglePrimary(item); }}
+        >
+          <FontAwesome6
+            name={item.isPrimary ? 'crown' : 'user'}
+            size={10}
+            color={item.isPrimary ? colors.textOnPrimary : colors.textSecondary}
+          />
+        </TouchableOpacity>
+      </View>
       <View style={styles.contactInfo}>
         <View style={styles.nameRow}>
           <Text style={styles.name}>{item.name}</Text>

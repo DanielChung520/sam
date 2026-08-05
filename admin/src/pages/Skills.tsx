@@ -96,15 +96,16 @@ function persistFlowLocal(id: string, nodes: FlowNode[]) {
 
 async function fetchFlow(id: string): Promise<FlowNode[] | null> {
   try {
-    const res = await get<{ data: FlowNode[] | null }>(`/admin/skills/${encodeURIComponent(id)}/flow`)
+    const flowId = getFlowIdForSkill(id) ?? id;
+    const res = await get<{ data: FlowNode[] | null }>(
+      `/admin/skills/${encodeURIComponent(id)}/flow?flowId=${encodeURIComponent(flowId)}`
+    )
     return Array.isArray(res.data) ? res.data : null
   } catch { return null }
 }
 
 async function saveFlowRemote(id: string, nodes: FlowNode[]): Promise<boolean> {
   try {
-    // 業務員在 FlowEditor 看到的 flow title（中文如「回應祝賀及問安」）= 真正的 flowId；
-    // skill id（如 greeting-card）只是入口。PUT 時帶上 ?flowId=xxx 讓後端找到正確文件。
     const flowId = getFlowIdForSkill(id) ?? id;
     await put(`/admin/skills/${encodeURIComponent(id)}/flow?flowId=${encodeURIComponent(flowId)}`, nodes)
     return true
@@ -112,12 +113,10 @@ async function saveFlowRemote(id: string, nodes: FlowNode[]): Promise<boolean> {
 }
 
 function getFlowIdForSkill(skillId: string): string | null {
-  // greeting-card skill 對應「回應祝賀及問安」flow（中文名為 _key 的真實 title）
-  // 從 name-card.json 找 flowId 對應，否則 fallback 用 skill id
-  if (skillId === 'greeting-card') return '回應祝賀及問安';
-  if (skillId === 'image-router') return '回應祝賀及問安';
-  if (skillId === 'ocr') return 'ocr';
-  if (skillId === 'card-collection') return 'card-collection';
+  if (skillId === 'greeting') return '回應祝賀及問安';
+  if (skillId === 'ocr') return 'OCR 解析';
+  if (skillId === 'card-collection') return '名片收集與回應';
+  if (skillId === 'image-other') return '其他未歸類圖片解析與處理';
   if (skillId === 'image') return '其他未歸類圖片解析與處理';
   return null;
 }
@@ -326,7 +325,7 @@ export function Skills() {
         color: meta?.color ?? '#64748b',
         icon: meta?.icon ?? 'Chat',
         tag: meta?.tag ?? '',
-        hasFlow: meta?.hasFlow ?? !!flowDefs[s.id],
+        hasFlow: meta?.hasFlow ?? false,
         inputSchema: meta?.inputSchema,
         outputSchema: meta?.outputSchema,
       }

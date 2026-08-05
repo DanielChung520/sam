@@ -111,7 +111,10 @@ router.get('/:id', async (req: any, res) => {
       senderId: m.direction === 'in' ? m.userId : 'me',
       text: m.text ?? '',
       time: fmtTime(m.createdAt),
-      type: m.type === 'text' ? 'text' : 'image',
+      type: m.type && m.type !== 'text' ? m.type : 'text',
+      mediaUrl: m.fileId ? `/api/v1/files/${m.fileId}?channelId=${encodeURIComponent(channelId)}` : undefined,
+      fileName: m.fileName,
+      durationMs: m.durationMs,
     }));
     res.json({
       data: {

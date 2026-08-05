@@ -1,7 +1,7 @@
 // Admin Channels CRUD API
 
 import { Router } from 'express';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHmac } from 'node:crypto';
 import { logger } from '../agent/logger.js';
 import {
   listAllChannels,
@@ -24,6 +24,8 @@ interface ChannelDto {
   channelId: string;
   destination?: string;
   businessOwnerId: string;
+  channelSecret?: string;
+  accessToken?: string;
   enabled: boolean;
   permissions?: string[];
   inheritedPermissions?: string[];  // linkedAgent + authorizedAgents 白名單合併
@@ -56,6 +58,8 @@ async function toDto(c: Channel): Promise<ChannelDto & { linkedAgentKey: string;
     channelId: c.channelId,
     destination: c.destination,
     businessOwnerId: c.businessOwnerId,
+    channelSecret: c.channelSecret,
+    accessToken: c.accessToken,
     enabled: c.enabled,
     permissions: c.permissions,
     inheritedPermissions: inheritedSet.size > 0 ? Array.from(inheritedSet) : undefined,
@@ -202,16 +206,82 @@ router.patch('/channels/:id', async (req, res) => {
   }
 });
 
-// POST /api/v1/admin/channels/:id/test — 驗證 token 有效性
+// POST /api/v1/admin/channels/:id/test — 完整連線檢查
+// 回傳 checks[]：accessToken 有效 / destination 一致 / channelSecret 簽章 / Orchestration 綁定
 router.post('/channels/:id/test', async (req, res) => {
   try {
     const channel = await findChannelById(req.params.id);
     if (!channel) return res.status(404).json({ error: 'channel not found' });
-    if (!channel.accessToken) {
-      return res.status(400).json({ ok: false, error: 'channel has no access token' });
+
+    const checks: { key: string; label: string; ok: boolean; message: string }[] = [];
+
+    const tokenResult = channel.accessToken
+      ? await verifyLineToken(channel.accessToken)
+      : { ok: false, error: 'channel has no access token' };
+    checks.push({
+      key: 'accessToken',
+      label: 'Access Token',
+      ok: tokenResult.ok,
+      message: tokenResult.ok
+        ? `${tokenResult.info?.displayName ?? 'OK'}（${tokenResult.info?.basicId ?? '?'}）`
+        : (tokenResult.error ?? '驗證失敗'),
+    });
+
+    // Destination 與實際 bot userId 比對（避免填錯導致 /webhook 無 path 找不到 channel）
+    const actualUserId: string | undefined = tokenResult.ok ? tokenResult.info?.userId : undefined;
+    if (!channel.destination) {
+      checks.push({ key: 'destination', label: 'Destination', ok: false, message: '未設定（需填 LINE Bot User ID）' });
+    } else if (!actualUserId) {
+      checks.push({ key: 'destination', label: 'Destination', ok: false, message: 'Access Token 無效，無法比對' });
+    } else if (channel.destination === actualUserId) {
+      checks.push({ key: 'destination', label: 'Destination', ok: true, message: `${actualUserId} 一致` });
+    } else {
+      checks.push({
+        key: 'destination',
+        label: 'Destination',
+        ok: false,
+        message: `${channel.destination} ≠ 實際 Bot ${actualUserId}，請在 LINE 連線區修正`,
+      });
     }
-    const result = await verifyLineToken(channel.accessToken);
-    res.json(result);
+
+    if (!channel.channelSecret) {
+      checks.push({ key: 'channelSecret', label: 'Channel Secret', ok: false, message: '未設定' });
+    } else {
+      try {
+        const body = JSON.stringify({ destination: channel.destination ?? '', events: [] });
+        const sig = createHmac('sha256', channel.channelSecret).update(body).digest('base64');
+        const wbRes = await fetch(`http://localhost:9091/webhook/ch_${channel._key}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-line-signature': sig },
+          body,
+        });
+        checks.push({
+          key: 'channelSecret',
+          label: 'Channel Secret',
+          ok: wbRes.status === 200,
+          message: wbRes.status === 200 ? '簽章驗證通過（webhook 正常回應）' : `簽章自驗失敗（webhook 回 ${wbRes.status}）`,
+        });
+      } catch (e) {
+        checks.push({ key: 'channelSecret', label: 'Channel Secret', ok: false, message: `自驗失敗: ${e instanceof Error ? e.message : String(e)}` });
+      }
+    }
+
+    const bound = channel.linkedAgentKey;
+    if (!bound) {
+      checks.push({ key: 'orchestration', label: 'Orchestration', ok: false, message: '未綁定 Orchestration Agent（建立時無啟用的 orchestrator）' });
+    } else {
+      const agent = await findAgentById(bound).catch(() => null);
+      if (!agent) {
+        checks.push({ key: 'orchestration', label: 'Orchestration', ok: false, message: `綁定的 agent（${bound}）不存在` });
+      } else if (agent.enabled === false) {
+        checks.push({ key: 'orchestration', label: 'Orchestration', ok: false, message: `${agent.name} 已停用，請到 Agent Center 啟用` });
+      } else {
+        checks.push({ key: 'orchestration', label: 'Orchestration', ok: true, message: `${agent.name}（已啟用）` });
+      }
+    }
+
+    const allOk = checks.every((c) => c.ok);
+    res.json({ ok: allOk, checks, info: tokenResult.ok ? tokenResult.info : undefined });
   } catch (e) {
     logger.error('admin.channels.test.failed', { error: String(e) });
     res.status(500).json({ error: e instanceof Error ? e.message : String(e) });

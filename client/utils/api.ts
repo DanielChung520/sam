@@ -126,6 +126,7 @@ export interface ContactListItem {
   avatar: string;
   lastMessage: string;
   lastMessageTime: string;
+  isPrimary?: boolean;
 }
 
 export async function getContacts(tag?: string, search?: string) {
@@ -156,6 +157,7 @@ export async function updateContact(contactId: string, fields: {
   remark?: string;
   tags?: string[];
   displayName?: string;
+  isPrimary?: boolean;
 }) {
   return request<{ data: any }>('PATCH', `/contacts/${contactId}`, fields);
 }
@@ -185,20 +187,122 @@ export async function createBroadcast(body: { title: string; contactIds: number[
 // ─── News ──────────────────────────────────────────────
 
 export interface NewsItem {
-  id: number;
+  id: string;
   category: string;
+  topic?: string;
   title: string;
   summary: string;
   source: string;
   time: string;
+  url?: string;
+  analysis?: string;
 }
 
-export async function getNews(category?: string) {
+export async function getNews(category?: string, topic?: string) {
   const params = new URLSearchParams();
-  if (category && category !== '全部') params.set('category', category);
+  if (topic) params.set('topic', topic);
+  else if (category && category !== '全部') params.set('category', category);
   const qs = params.toString();
   const json = await request<{ data: NewsItem[] }>('GET', `/news${qs ? `?${qs}` : ''}`);
   return { data: json.data ?? [] };
+}
+
+export interface NewsSubscription {
+  _key?: string;
+  channelId?: string;
+  topics: string[];
+  summaryLen: 'short' | 'medium' | 'full';
+  autoSummarize: boolean;
+  highlightKeywords: boolean;
+  analysisPrompt: string;
+  schedule: {
+    type: 'daily' | 'weekly';
+    timesPerDay: number;
+    startHour: number;
+    intervalHours: number;
+    days: number[];
+    followSystem: boolean;
+    tzOffset: number;
+  };
+  enabled?: boolean;
+  lastRunAt?: number;
+}
+
+export async function getNewsSubscription() {
+  const json = await request<{ data: NewsSubscription | null }>('GET', '/news/subscription');
+  return { data: json.data };
+}
+
+export async function saveNewsSubscription(fields: Partial<Omit<NewsSubscription, '_key' | 'channelId'>>) {
+  const json = await request<{ data: NewsSubscription }>('PATCH', '/news/subscription', fields);
+  return { data: json.data };
+}
+
+export async function triggerNewsFetch() {
+  const json = await request<{ ok: boolean; message: string }>('POST', '/news/fetch');
+  return { data: json };
+}
+
+export async function pushNewsToUser(userIds: string[]) {
+  const json = await request<{ ok: boolean; taskId: string; total: number; batches: number }>(
+    'POST',
+    '/news/push',
+    { userIds },
+  );
+  return { data: json };
+}
+
+export interface NewsPushTaskInfo {
+  id: string;
+  status: 'pending' | 'sending' | 'completed' | 'failed';
+  total: number;
+  sent: number;
+  batchSize: number;
+  batchIntervalMs: number;
+  nextBatchAt: number;
+  createdAt: number;
+  completedAt?: number;
+}
+
+// 發送任務進度（批次管制：每批 ≤8 人、批間隔 5 分鐘）
+export async function getNewsPushTasks() {
+  const json = await request<{ data: NewsPushTaskInfo[] }>('GET', '/news/push/tasks');
+  return json;
+}
+
+export interface NewsSchedule {
+  type: 'daily' | 'weekly';
+  timesPerDay: number;
+  startHour: number;
+  intervalHours: number;
+  days: number[];
+  followSystem: boolean;
+  tzOffset: number;
+}
+
+export interface NewsPushSettingInfo {
+  targets: string[];
+  enabled: boolean;
+  updatedAt: number;
+}
+
+// 取得發送好友設定（好友清單）
+export async function getNewsPushSetting() {
+  const json = await request<{ data: NewsPushSettingInfo | null }>('GET', '/news/push/setting');
+  return json;
+}
+
+// 保存發送好友設定（覆蓋式）。發送時機與新聞追蹤一致：news scheduler 抓好新聞後隨即自動發送
+export async function saveNewsPushSetting(input: {
+  userIds: string[];
+  enabled?: boolean;
+}) {
+  const json = await request<{ ok: boolean; total: number }>(
+    'PUT',
+    '/news/push/setting',
+    input,
+  );
+  return { data: json };
 }
 
 // ─── Greetings ─────────────────────────────────────────
