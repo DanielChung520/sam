@@ -113,7 +113,8 @@ export default function FriendsScreen() {
       gap: 8,
     },
     searchInput: { flex: 1, fontSize: 14, color: c.text },
-    tagFilters: { flexDirection: 'row', gap: 8, marginTop: 12 },
+    // alignItems: 'flex-start' 防止 horizontal FlatList 膠囊被 stretch 壓扁（RNW scroll content 預設 stretch）
+    tagFilters: { flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'flex-start' },
     tagFilter: {
       paddingHorizontal: 14,
       paddingVertical: 6,

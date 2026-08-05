@@ -126,7 +126,8 @@ export default function ChatHistoryScreen() {
     },
     searchInput: { flex: 1, fontSize: 14, color: c.text, padding: 0 },
     filterRow: { marginBottom: 12 },
-    filterChips: { paddingHorizontal: 16, gap: 8 },
+    // alignItems: 'flex-start' 防止 horizontal FlatList 膠囊被 stretch 壓扁（RNW scroll content 預設 stretch）
+    filterChips: { paddingHorizontal: 16, gap: 8, alignItems: 'flex-start' },
     chip: {
       paddingHorizontal: 14,
       paddingVertical: 6,

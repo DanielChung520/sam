@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { Screen } from '@/components/Screen';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
@@ -13,6 +14,7 @@ import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons';
+import { getNewsSubscription, saveNewsSubscription } from '@/utils/api';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -165,6 +167,8 @@ export default function NewsSettingsTimeScreen() {
   const [scheduleType, setScheduleType] = useState<'daily' | 'weekly'>('daily');
   // 每日次數（1-24）
   const [timesPerDay, setTimesPerDay] = useState(1);
+  // 每日首次抓取時刻（0-23，local）
+  const [startHour, setStartHour] = useState(8);
   // 間隔（小時，僅 timesPerDay > 1 時啟用）
   const [intervalHours, setIntervalHours] = useState('4');
   // 每週選項（0=日, 1=一, ..., 6=六）
@@ -172,12 +176,76 @@ export default function NewsSettingsTimeScreen() {
   // 時區
   const [followSystem, setFollowSystem] = useState(true);
   const [tzOffset, setTzOffset] = useState('0');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+
+  // 載入既有排程設定
+  const loadSchedule = useCallback(async () => {
+    try {
+      setLoading(true);
+      const { data } = await getNewsSubscription();
+      if (data?.schedule) {
+        const s = data.schedule;
+        if (s.type === 'daily' || s.type === 'weekly') setScheduleType(s.type);
+        if (s.timesPerDay >= 1 && s.timesPerDay <= 24) setTimesPerDay(s.timesPerDay);
+        if (s.startHour >= 0 && s.startHour <= 23) setStartHour(s.startHour);
+        if (s.intervalHours > 0) setIntervalHours(String(s.intervalHours));
+        if (Array.isArray(s.days)) setSelectedDays(s.days);
+        if (typeof s.followSystem === 'boolean') setFollowSystem(s.followSystem);
+        if (typeof s.tzOffset === 'number') setTzOffset(String(s.tzOffset));
+      }
+    } catch (e) {
+      console.error('Failed to load news schedule:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSchedule();
+  }, [loadSchedule]);
 
   const toggleDay = (d: number) => {
     setSelectedDays((prev) =>
       prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()
     );
   };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      await saveNewsSubscription({
+        schedule: {
+          type: scheduleType,
+          timesPerDay,
+          startHour,
+          intervalHours: Math.max(parseInt(intervalHours || '4', 10) || 4, 1),
+          days: scheduleType === 'weekly' ? selectedDays : [1, 2, 3, 4, 5],
+          followSystem,
+          tzOffset: followSystem ? 0 : parseInt(tzOffset || '0', 10) || 0,
+        },
+      });
+      setSaveMsg('已儲存');
+    } catch (e) {
+      setSaveMsg('儲存失敗，請重試');
+      console.error('Failed to save news schedule:', e);
+    } finally {
+      setSaving(false);
+      setTimeout(() => setSaveMsg(null), 2000);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Screen backgroundColor={colors.bg} safeAreaEdges={['left', 'right']}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen backgroundColor={colors.bg} safeAreaEdges={['left', 'right']}>
@@ -239,6 +307,26 @@ export default function NewsSettingsTimeScreen() {
                 <Text style={styles.counterUnit}>次/日</Text>
               </View>
             </View>
+            <View style={styles.settingRow}>
+              <Text style={styles.settingLabel}>每日首次時間</Text>
+              <View style={styles.counter}>
+                <TouchableOpacity
+                  style={[styles.counterBtn, startHour <= 0 && styles.counterBtnDisabled]}
+                  onPress={() => startHour > 0 && setStartHour(startHour - 1)}
+                  disabled={startHour <= 0}
+                >
+                  <FontAwesome6 name="minus" size={12} color={colors.text} />
+                </TouchableOpacity>
+                <Text style={styles.counterValue}>{startHour}</Text>
+                <TouchableOpacity
+                  style={styles.counterBtn}
+                  onPress={() => startHour < 23 && setStartHour(startHour + 1)}
+                >
+                  <FontAwesome6 name="plus" size={12} color={colors.text} />
+                </TouchableOpacity>
+                <Text style={styles.counterUnit}>時</Text>
+              </View>
+            </View>
             {timesPerDay > 1 && (
               <>
                 <View style={styles.intervalRow}>
@@ -254,12 +342,12 @@ export default function NewsSettingsTimeScreen() {
                   <Text style={styles.intervalUnit}>小時（從每日首次開始計算）</Text>
                 </View>
                 <Text style={styles.sectionHint}>
-                  將於每日首次抓取後，每隔 {intervalHours || '?'} 小時自動重抓
+                  每日 {startHour} 時首次抓取，之後每隔 {intervalHours || '?'} 小時自動重抓
                 </Text>
               </>
             )}
             {timesPerDay === 1 && (
-              <Text style={styles.sectionHint}>每天固定時間抓取一次</Text>
+              <Text style={styles.sectionHint}>每天 {startHour} 時固定抓取一次</Text>
             )}
           </View>
         )}
@@ -331,9 +419,13 @@ export default function NewsSettingsTimeScreen() {
         </View>
 
         {/* 儲存按鈕 */}
-        <TouchableOpacity style={styles.saveBtn} onPress={() => router.back()}>
+        <TouchableOpacity
+          style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+          onPress={handleSave}
+          disabled={saving}
+        >
           <FontAwesome6 name="floppy-disk" size={16} color={colors.textOnPrimary} />
-          <Text style={styles.saveBtnText}>儲存設定</Text>
+          <Text style={styles.saveBtnText}>{saving ? '儲存中…' : saveMsg ?? '儲存設定'}</Text>
         </TouchableOpacity>
       </ScrollView>
     </Screen>

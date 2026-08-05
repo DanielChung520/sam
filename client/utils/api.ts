@@ -185,20 +185,60 @@ export async function createBroadcast(body: { title: string; contactIds: number[
 // ─── News ──────────────────────────────────────────────
 
 export interface NewsItem {
-  id: number;
+  id: string;
   category: string;
+  topic?: string;
   title: string;
   summary: string;
   source: string;
   time: string;
+  url?: string;
+  analysis?: string;
 }
 
-export async function getNews(category?: string) {
+export async function getNews(category?: string, topic?: string) {
   const params = new URLSearchParams();
-  if (category && category !== '全部') params.set('category', category);
+  if (topic) params.set('topic', topic);
+  else if (category && category !== '全部') params.set('category', category);
   const qs = params.toString();
   const json = await request<{ data: NewsItem[] }>('GET', `/news${qs ? `?${qs}` : ''}`);
   return { data: json.data ?? [] };
+}
+
+export interface NewsSubscription {
+  _key?: string;
+  channelId?: string;
+  topics: string[];
+  summaryLen: 'short' | 'medium' | 'full';
+  autoSummarize: boolean;
+  highlightKeywords: boolean;
+  analysisPrompt: string;
+  schedule: {
+    type: 'daily' | 'weekly';
+    timesPerDay: number;
+    startHour: number;
+    intervalHours: number;
+    days: number[];
+    followSystem: boolean;
+    tzOffset: number;
+  };
+  enabled?: boolean;
+  lastRunAt?: number;
+}
+
+export async function getNewsSubscription() {
+  const json = await request<{ data: NewsSubscription | null }>('GET', '/news/subscription');
+  return { data: json.data };
+}
+
+export async function saveNewsSubscription(fields: Partial<Omit<NewsSubscription, '_key' | 'channelId'>>) {
+  const json = await request<{ data: NewsSubscription }>('PATCH', '/news/subscription', fields);
+  return { data: json.data };
+}
+
+export async function triggerNewsFetch() {
+  const json = await request<{ ok: boolean; message: string }>('POST', '/news/fetch');
+  return { data: json };
 }
 
 // ─── Greetings ─────────────────────────────────────────

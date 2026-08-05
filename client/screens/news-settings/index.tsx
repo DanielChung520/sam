@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   Switch,
+  ActivityIndicator,
 } from 'react-native';
 import { Screen } from '@/components/Screen';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
@@ -14,6 +15,7 @@ import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons';
+import { getNewsSubscription, saveNewsSubscription } from '@/utils/api';
 
 type SearchFreq = 'realtime' | 'hourly' | 'daily' | 'weekly';
 
@@ -58,6 +60,7 @@ export default function NewsSettingsScreen() {
       marginBottom: 14,
     },
     sectionTitle: { fontSize: 16, fontWeight: '700', color: c.text },
+    sectionHint: { fontSize: 12, color: c.textTertiary, marginTop: -8, marginBottom: 12 },
     tagsWrap: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -190,7 +193,7 @@ export default function NewsSettingsScreen() {
     saveBtnText: { fontSize: 16, fontWeight: '700', color: c.textOnPrimary },
   }));
 
-  const [topics, setTopics] = useState(['AI 產業', '半導體', '金融市場', '科技政策']);
+  const [topics, setTopics] = useState<string[]>([]);
   const [newTopic, setNewTopic] = useState('');
   const [summaryLen, setSummaryLen] = useState<'short' | 'medium' | 'full'>('medium');
   const [autoSummarize, setAutoSummarize] = useState(true);
@@ -198,6 +201,32 @@ export default function NewsSettingsScreen() {
   const [analysisPrompt, setAnalysisPrompt] = useState(
     '請以銷售助理的角度分析這則新聞對我客戶的潛在影響，並提供三個具體的跟進建議。',
   );
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+
+  // 載入既有訂閱設定
+  const loadSubscription = useCallback(async () => {
+    try {
+      setLoading(true);
+      const { data } = await getNewsSubscription();
+      if (data) {
+        if (Array.isArray(data.topics)) setTopics(data.topics);
+        if (['short', 'medium', 'full'].includes(data.summaryLen)) setSummaryLen(data.summaryLen);
+        if (typeof data.autoSummarize === 'boolean') setAutoSummarize(data.autoSummarize);
+        if (typeof data.highlightKeywords === 'boolean') setHighlightKeywords(data.highlightKeywords);
+        if (typeof data.analysisPrompt === 'string' && data.analysisPrompt.trim()) setAnalysisPrompt(data.analysisPrompt);
+      }
+    } catch (e) {
+      console.error('Failed to load news subscription:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSubscription();
+  }, [loadSubscription]);
 
   const addTopic = () => {
     const t = newTopic.trim();
@@ -210,6 +239,37 @@ export default function NewsSettingsScreen() {
   const removeTopic = (topic: string) => {
     setTopics(topics.filter((t) => t !== topic));
   };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      await saveNewsSubscription({
+        topics,
+        summaryLen,
+        autoSummarize,
+        highlightKeywords,
+        analysisPrompt,
+      });
+      setSaveMsg('已儲存');
+    } catch (e) {
+      setSaveMsg('儲存失敗，請重試');
+      console.error('Failed to save news subscription:', e);
+    } finally {
+      setSaving(false);
+      setTimeout(() => setSaveMsg(null), 2000);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Screen backgroundColor={colors.bg} safeAreaEdges={['left', 'right']}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen backgroundColor={colors.bg} safeAreaEdges={['left', 'right']}>
@@ -334,9 +394,13 @@ export default function NewsSettingsScreen() {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.saveBtn} onPress={() => router.back()}>
+        <TouchableOpacity
+          style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+          onPress={handleSave}
+          disabled={saving}
+        >
           <FontAwesome6 name="floppy-disk" size={16} color={colors.textOnPrimary} />
-          <Text style={styles.saveBtnText}>儲存設定</Text>
+          <Text style={styles.saveBtnText}>{saving ? '儲存中…' : saveMsg ?? '儲存設定'}</Text>
         </TouchableOpacity>
       </ScrollView>
     </Screen>

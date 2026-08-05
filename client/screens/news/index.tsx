@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,29 +15,20 @@ import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons';
-import { getNews } from '@/utils/api';
-
-interface NewsItem {
-  id: number;
-  category: string;
-  title: string;
-  summary: string;
-  source: string;
-  time: string;
-}
-
-const TABS = ['全部', '今日焦點', '產業', '科技'];
-
+import { getNews, getNewsSubscription, triggerNewsFetch, type NewsItem } from '@/utils/api';
 export default function NewsScreen() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('全部');
+  const [tabs, setTabs] = useState<string[]>(['全部']);
   const [showMenu, setShowMenu] = useState(false);
   const router = useSafeRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = useThemedStyles((c) => ({
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    emptyText: { fontSize: 14, color: c.textSecondary, textAlign: 'center', paddingHorizontal: 40, lineHeight: 20 },
     header: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -77,7 +68,8 @@ export default function NewsScreen() {
       paddingHorizontal: 14,
     },
     menuItemText: { fontSize: 14, color: c.text, fontWeight: '500' },
-    tabs: { paddingHorizontal: 16, gap: 8, marginBottom: 16 },
+    // alignItems: 'flex-start' 防止 horizontal FlatList 膠囊被 stretch 壓扁（RNW scroll content 預設 stretch）
+    tabs: { paddingHorizontal: 16, gap: 8, marginBottom: 16, alignItems: 'flex-start' },
     tabBtn: {
       paddingHorizontal: 14,
       paddingVertical: 6,
@@ -127,10 +119,13 @@ export default function NewsScreen() {
     },
   }));
 
+  const tabsRef = useRef<string[]>(['全部']);
+
   const fetchNews = useCallback(async () => {
     try {
       setLoading(true);
-      const json = await getNews(activeTab !== '全部' ? activeTab : undefined);
+      const isTopic = activeTab !== '全部' && tabsRef.current.includes(activeTab);
+      const json = await getNews(isTopic ? undefined : activeTab, isTopic ? activeTab : undefined);
       setNews(json.data);
     } catch (e) {
       console.error('Failed to fetch news:', e);
@@ -139,17 +134,65 @@ export default function NewsScreen() {
     }
   }, [activeTab]);
 
+  const fetchTabs = useCallback(async () => {
+    try {
+      const { data } = await getNewsSubscription();
+      const topics = Array.isArray(data?.topics) ? data.topics : [];
+      const next = ['全部', ...topics];
+      tabsRef.current = next;
+      setTabs((prev) =>
+        prev.length === next.length && prev.every((t, i) => t === next[i]) ? prev : next
+      );
+    } catch (e) {
+      console.error('Failed to load news tabs:', e);
+    }
+  }, []);
+
+  // 即時更新：觸發 server 抓取最新新聞 → 輪詢直到完成 → 重新載入列表
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setShowMenu(false);
+    setRefreshing(true);
+    try {
+      await triggerNewsFetch();
+      // server 背景抓取需數十秒，每 3 秒輪詢一次，最多等 90 秒
+      let done = false;
+      for (let i = 0; i < 30 && !done; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        try {
+          const json = await getNewsSubscription();
+          const lastRun = json.data?.lastRunAt ?? 0;
+          const isTopic = activeTab !== '全部' && tabsRef.current.includes(activeTab);
+          const list = await getNews(isTopic ? undefined : activeTab, isTopic ? activeTab : undefined);
+          if (lastRun > 0 && Date.now() - lastRun < 15000) {
+            setNews(list.data);
+            done = true;
+          } else if (list.data.length > 0) {
+            setNews(list.data);
+          }
+        } catch {
+          // 輪詢失敗繼續下一輪
+        }
+      }
+    } catch (e) {
+      console.error('Failed to trigger news refresh:', e);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshing, activeTab]);
+
   useFocusEffect(
     useCallback(() => {
+      fetchTabs();
       fetchNews();
-    }, [fetchNews])
+    }, [fetchTabs, fetchNews])
   );
 
   const renderNews = ({ item }: { item: NewsItem }) => (
     <TouchableOpacity style={styles.newsCard} activeOpacity={0.7}>
       <View style={styles.newsHeader}>
         <View style={styles.categoryBadge}>
-          <Text style={styles.categoryText}>{item.category}</Text>
+          <Text style={styles.categoryText}>{item.topic || item.category}</Text>
         </View>
         <Text style={styles.sourceText}>{item.source} · {item.time}</Text>
       </View>
@@ -163,13 +206,23 @@ export default function NewsScreen() {
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <AccountAvatar />
         <Text style={styles.headerTitle}>新聞追蹤</Text>
-        <TouchableOpacity style={styles.menuBtn} onPress={() => setShowMenu(!showMenu)}>
-          <FontAwesome6 name="ellipsis" size={20} color={colors.text} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {refreshing && <ActivityIndicator size="small" color={colors.sky} />}
+          <TouchableOpacity style={styles.menuBtn} onPress={() => setShowMenu(!showMenu)}>
+            <FontAwesome6 name="ellipsis" size={20} color={colors.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {showMenu && (
         <View style={styles.menu}>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={handleRefresh}
+          >
+            <FontAwesome6 name="arrows-rotate" size={14} color={colors.sky} />
+            <Text style={styles.menuItemText}>{refreshing ? '更新中...' : '即時更新'}</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.menuItem}
             onPress={() => { setShowMenu(false); router.push('/news-settings?focus=topics'); }}
@@ -189,7 +242,7 @@ export default function NewsScreen() {
 
       <FlatList
         horizontal
-        data={TABS}
+        data={tabs}
         keyExtractor={(item) => item}
         renderItem={({ item }) => (
           <TouchableOpacity
@@ -208,6 +261,12 @@ export default function NewsScreen() {
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.sky} />
+        </View>
+      ) : news.length === 0 ? (
+        <View style={styles.loadingContainer}>
+          <Text style={styles.emptyText}>
+            還沒有新聞資料。\n請先到「關注設置」加入主題，再點右上角重新整理。
+          </Text>
         </View>
       ) : (
         <FlatList
