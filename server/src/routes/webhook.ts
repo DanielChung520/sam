@@ -292,6 +292,15 @@ async function persistIncomingMessage(
     direction: 'in',
     type: message?.type ?? 'text',
     text: message?.type === 'text' ? (message.text ?? '') : undefined,
+    location: message?.type === 'location'
+      ? {
+          title: message.title,
+          address: message.address,
+          latitude: message.latitude,
+          longitude: message.longitude,
+        }
+      : undefined,
+    messageId: message?.id,
     replyToken: undefined,
   });
 
@@ -333,8 +342,14 @@ async function processQueueItem(item: import('../agent/asyncQueue.js').QueueItem
   try {
     await triggerSlidingWindowExtraction(userId, channelId);
 
+    // location 訊息（LINE 使用者分享位置）→ 查該座標的天氣
+    if (msgType === 'location') {
+      await handleLocationMessage(client, channel, userId, channelId, event);
+      return;
+    }
+
     if (msgType !== 'text') {
-      await handleMediaMessage(client, blobClient, pipeline, userId, channelId, event, p.sourceType, businessOwnerId);
+      await handleMediaMessage(client, blobClient, pipeline, userId, channelId, event, p.sourceType, businessOwnerId, channel);
       return;
     }
 
@@ -469,6 +484,40 @@ async function sendReplyOrPush(
   }
 }
 
+// location 訊息 → 用座標查天氣並回覆（走 weather skill 的 getWeather + 共用格式化）
+async function handleLocationMessage(
+  client: messagingApi.MessagingApiClient | null,
+  channel: Channel | null,
+  userId: string,
+  channelId: string,
+  messageEvent: any,
+): Promise<void> {
+  const msg = messageEvent?.message ?? {};
+  const lat = typeof msg.latitude === 'number' ? msg.latitude : NaN;
+  const lon = typeof msg.longitude === 'number' ? msg.longitude : NaN;
+  const replyToken = replyTokenOf(messageEvent);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    logger.warn('webhook.location_missing_coords', { channelId, userId });
+    await sendReplyOrPush(client, channel, userId, replyToken, '收到你的位置，但座標資訊不完整，無法查天氣 🙏');
+    return;
+  }
+
+  try {
+    const { getWeather, formatWeatherOutput } = await import('../agent/skills/manifests/weather.js');
+    const weather = await getWeather({ lat, lon });
+    if (!weather) {
+      await sendReplyOrPush(client, channel, userId, replyToken, '已收到你的位置，但目前查不到該地天氣，請稍後再試 🙏');
+      return;
+    }
+    const prefix = msg.title ? `📍 ${msg.title}\n\n` : '📍 你所在位置的天氣\n\n';
+    await sendReplyOrPush(client, channel, userId, replyToken, `${prefix}${formatWeatherOutput(weather)}`);
+  } catch (e) {
+    logger.error('webhook.location_failed', { channelId, userId, error: String(e) });
+    await sendReplyOrPush(client, channel, userId, replyToken, '查天氣時發生錯誤，請稍後再試 🙏');
+  }
+}
+
 async function handleMediaMessage(
   client: messagingApi.MessagingApiClient | null,
   blobClient: messagingApi.MessagingApiBlobClient | null,
@@ -478,6 +527,7 @@ async function handleMediaMessage(
   messageEvent: any,
   sourceType: string,
   businessOwnerId: string,
+  channel: Channel | null,
 ): Promise<void> {
   const msg = messageEvent.message ?? {};
   const mediaType = (msg.type as string) === 'image' ? 'image'
@@ -514,6 +564,24 @@ async function handleMediaMessage(
     return;
   }
 
+  // 媒體存檔成功 → 回寫 message 文件（補 fileId/storageKey），讓 chat API 能回傳 mediaUrl
+  if (media) {
+    try {
+      const { updateMessageMedia } = await import('../data/messageRepo.js');
+      await updateMessageMedia(channelId, userId, msg.id, {
+        mediaStorageKey: media.storageKey,
+        fileId: media.fileId,
+        contentType: media.contentType,
+        fileName: media.fileName,
+        fileSize: media.size,
+        durationMs: payload.durationMs,
+      });
+      logger.debug('webhook.media_persisted', { channelId, userId, fileId: media.fileId });
+    } catch (err) {
+      logger.warn('webhook.media_persist_failed', { channelId, userId, error: String(err) });
+    }
+  }
+
   const replyToken = replyTokenOf(messageEvent);
   try {
     const result = await pipeline.handleMessage({
@@ -539,17 +607,12 @@ async function handleMediaMessage(
       storageKey: media?.storageKey,
       state: result.state,
     });
-    if (client && replyToken) {
-      const chunks = chunkForLine(result.text);
-      const messages = chunks.map((c) => ({ type: 'text' as const, text: c }));
-      await client.replyMessage({ replyToken, messages });
-    }
+    // 走 sendReplyOrPush（內含 out 落庫），確保 app 聊天室也能看到回應
+    await sendReplyOrPush(client, channel, userId, replyToken, result.text);
   } catch (err) {
     logger.error('webhook.media_handler_failed', { channelId, userId, mediaType, error: String(err) });
     Metrics.pushError('webhook.media_handler_failed', String(err).slice(0, 200), { channelId, userId });
-    if (client && replyToken) {
-      await safeReply(client, replyToken, '收到您的多媒體訊息，處理中遇到問題 🙏');
-    }
+    await sendReplyOrPush(client, channel, userId, replyToken, '收到您的多媒體訊息，處理中遇到問題 🙏');
   }
 }
 
