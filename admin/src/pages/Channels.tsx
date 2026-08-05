@@ -134,6 +134,7 @@ export function Channels() {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [verifyInfo, setVerifyInfo] = useState<any>(null)
+  const [testChecks, setTestChecks] = useState<{ key: string; label: string; ok: boolean; message: string }[] | null>(null)
 
   /* ── Data loading ── */
 
@@ -221,6 +222,7 @@ export function Channels() {
     setDConcurrency(ch.concurrencyLimit ?? 2)
     setTestResult(null)
     setVerifyInfo(null)
+    setTestChecks(null)
     setDetailOpen(true)
   }
 
@@ -266,15 +268,18 @@ export function Channels() {
     setTesting(true)
     setTestResult(null)
     setVerifyInfo(null)
+    setTestChecks(null)
     try {
-      const res = await post<{ ok: boolean; info?: any; error?: string }>(
+      const res = await post<{ ok: boolean; info?: any; error?: string; checks?: { key: string; label: string; ok: boolean; message: string }[] }>(
         `/admin/channels/${encodeURIComponent(detailChannel.id)}/test`,
         {}
       )
       setTestResult({ ok: !!res.ok, message: res.ok ? 'Connection OK' : (res.error ?? 'Connection failed') })
+      if (res.checks && res.checks.length > 0) setTestChecks(res.checks)
       if (res.ok && res.info) setVerifyInfo(res.info)
     } catch (e) {
       setTestResult({ ok: false, message: e instanceof Error ? e.message : String(e) })
+      setTestChecks(null)
     } finally {
       setTesting(false)
     }
@@ -462,8 +467,8 @@ export function Channels() {
 
       {/* ── Create Dialog ── */}
       {createOpen && (
-        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setCreateOpen(false) }}>
-          <div className="modal" style={{ width: 520 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setCreateOpen(false) }}>
+          <div className="modal" style={{ width: 520 }} onMouseDown={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">Add Channel</h2>
               <button className="modal-close" onClick={() => { setCreateOpen(false); resetCreate() }}>✕</button>
@@ -497,10 +502,24 @@ export function Channels() {
                 <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Orchestration</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                      {agents.find((a) => a.category === 'orchestrator' && a.enabled)?.name ?? 'Polaris'}
-                    </span>
-                    <span className="badge badge-green">系統自動綁定</span>
+                    {(() => {
+                      const orch = agents.find((a) => a.category === 'orchestrator' && a.enabled)
+                      if (!orch) {
+                        return (
+                          <span style={{ fontSize: 13, color: '#dc2626', fontWeight: 600 }}>
+                            ⚠️ 無啟用中的 Orchestration Agent — 建立後不會自動綁定
+                          </span>
+                        )
+                      }
+                      return (
+                        <>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                            {orch.name}
+                          </span>
+                          <span className="badge badge-green">系統自動綁定</span>
+                        </>
+                      )
+                    })()}
                   </div>
                 </div>
               </div>
@@ -512,7 +531,7 @@ export function Channels() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   {createFields.map((f) => (
                     <div key={f.key} className="form-group" style={{ margin: 0 }}>
-                      <label className="form-label">{f.label}</label>
+                      <label className="form-label">{f.label}{f.key === 'channelId' ? ' *' : ''}</label>
                       <input
                         className="form-input"
                         type={f.password ? 'password' : 'text'}
@@ -557,7 +576,7 @@ export function Channels() {
       {detailOpen && detailChannel && (
         <div
           className="modal-overlay"
-          onClick={(e) => {
+          onMouseDown={(e) => {
             if (e.target === e.currentTarget) {
               setDetailOpen(false);
               setDetailChannel(null);
@@ -583,7 +602,7 @@ export function Channels() {
               boxShadow: '-8px 0 32px rgba(0,0,0,0.15)',
               animation: 'drawerSlideIn 0.25s ease-out',
             }}
-            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="modal-header" style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0, marginBottom: 0 }}>
               <h2 className="modal-title">{detailMeta?.icon} Channel Settings</h2>
@@ -671,14 +690,25 @@ export function Channels() {
                     <div style={{ marginTop: 8, padding: 8, background: '#fff', borderRadius: 6, fontSize: 11, color: 'var(--text-secondary)' }}>
                       {verifyInfo.displayName && <div>Name: {verifyInfo.displayName}</div>}
                       {verifyInfo.userId && <div>Bot ID: {verifyInfo.userId}</div>}
-                      {verifyInfo.basicId && <div>Basic ID: @{verifyInfo.basicId}</div>}
+                      {verifyInfo.basicId && <div>Basic ID: {verifyInfo.basicId}</div>}
+                    </div>
+                  )}
+                  {testChecks && (
+                    <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
+                      {testChecks.map((c) => (
+                        <div key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '4px 8px', borderRadius: 6, background: c.ok ? '#f0fdf4' : '#fef2f2' }}>
+                          <span style={{ color: c.ok ? '#059669' : 'var(--danger)', fontWeight: 700 }}>{c.ok ? '✓' : '✗'}</span>
+                          <span style={{ fontWeight: 600, color: 'var(--text)' }}>{c.label}</span>
+                          <span style={{ color: 'var(--text-secondary)', marginLeft: 'auto' }}>{c.message}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 10 }}>
                   {PLATFORM_CONFIG_FIELDS.line.map((f) => (
                     <div key={f.key} className="form-group" style={{ margin: 0 }}>
-                      <label className="form-label">{f.label}</label>
+                      <label className="form-label">{f.label}{f.key === 'channelId' ? ' *' : ''}</label>
                       <input
                         className="form-input"
                         type={f.password ? 'password' : 'text'}
@@ -709,10 +739,24 @@ export function Channels() {
                 <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Orchestration（系統自動綁定）</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                      {agents.find((a) => a._key === dAgent)?.name ?? 'Polaris'}
-                    </span>
-                    <span className="badge badge-green">自動綁定</span>
+                    {(() => {
+                      const orch = agents.find((a) => a._key === dAgent)
+                      if (!orch) {
+                        return (
+                          <span style={{ fontSize: 13, color: '#dc2626', fontWeight: 600 }}>
+                            ⚠️ 未綁定 Orchestration Agent
+                          </span>
+                        )
+                      }
+                      return (
+                        <>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                            {orch.name}
+                          </span>
+                          <span className="badge badge-green">自動綁定</span>
+                        </>
+                      )
+                    })()}
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
                     主 Agent（Orchestration 入口）由系統固定，不需選擇。下方可授權其他 Agents。

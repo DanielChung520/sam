@@ -8,16 +8,23 @@ const COLLECTION = 'skill_flows';
 interface FlowNode {
   id: string;
   label: string;
-  desc: string;
-  color: string;
+  desc?: string;
+  color?: string;
   enabled: boolean;
   pos?: { x: number; y: number };
+}
+
+interface FlowEdge {
+  source: string;
+  target: string;
+  label?: string;
 }
 
 interface StoredFlow {
   _key: string;
   title: string;
   nodes: FlowNode[];
+  edges?: FlowEdge[];
   updatedAt: string;
 }
 
@@ -44,9 +51,9 @@ function isFlowNode(v: unknown): v is FlowNode {
   return (
     typeof n.id === 'string' &&
     typeof n.label === 'string' &&
-    typeof n.desc === 'string' &&
-    typeof n.color === 'string' &&
-    typeof n.enabled === 'boolean'
+    typeof n.enabled === 'boolean' &&
+    (n.desc === undefined || typeof n.desc === 'string') &&
+    (n.color === undefined || typeof n.color === 'string')
   );
 }
 
@@ -61,45 +68,22 @@ router.get('/:title/flow', async (req, res) => {
     const raw = decodeURIComponent(req.params.title);
     await ensureCollection(COLLECTION);
     const collection = getDb().collection(COLLECTION);
-    // 支援兩種輸入：flowId（如「回應祝賀及問安」）或 base64url(key)
-    let doc = await findFlowDoc(collection, raw);
+    const flowId = (req.query.flowId as string) || raw;
+    const key = titleToKey(flowId);
+    const doc = (await collection.document(key).catch(() => null)) as StoredFlow | null;
     if (!doc) {
-      // 嘗試當 skill id：找 agents collection 對應 sub-agent 的 flow（保留向後相容）
-      doc = await findFlowBySkillId(collection, raw);
+      return res.json({ data: null });
     }
-    res.json({ data: doc?.nodes ?? null });
+    res.json({ data: doc.nodes });
   } catch (err: any) {
     console.error('GET flow error:', err);
     res.status(500).json({ error: err.message || 'Internal error' });
   }
 });
 
-async function findFlowDoc(collection: any, keyOrTitle: string) {
-  // 1. 直接用 base64url 當 _key
-  const encoded = Buffer.from(keyOrTitle, 'utf8').toString('base64url');
-  const doc = await collection.document(encoded).catch(() => null);
-  if (doc) return doc;
-  // 2. 嘗試當作 flow 文件其他 _key 形式（如 base64 + padding）
-  try {
-    const padded = keyOrTitle + '='.repeat((4 - keyOrTitle.length % 4) % 4);
-    const decoded = Buffer.from(padded, 'base64url').toString('utf8');
-    const k2 = Buffer.from(decoded, 'utf8').toString('base64url');
-    return await collection.document(k2).catch(() => null);
-  } catch {
-    return null;
-  }
-}
-
-async function findFlowBySkillId(collection: any, skillId: string) {
-  // 業務員輸入 skill id（如 greeting-card）時，找對應 flow
-  // 簡化：目前不做 skill→flow mapping，回 null
-  return null;
-}
-
 router.put('/:title/flow', async (req, res) => {
   try {
     const raw = decodeURIComponent(req.params.title);
-    // 支援 query ?flowId=xxx 指定實際 flow id（避免 skill id 編碼後找不到對應文件）
     const flowId = (req.query.flowId as string) || raw;
     const body = req.body;
     if (!Array.isArray(body) || !body.every(isFlowNode)) {
@@ -107,14 +91,18 @@ router.put('/:title/flow', async (req, res) => {
     }
     await ensureCollection(COLLECTION);
     const collection = getDb().collection(COLLECTION);
+    const key = titleToKey(flowId);
+    // 保留既有 edges（PUT body 只含 nodes，避免 FlowEditor 存檔時把 edges 清掉）
+    const existing = (await collection.document(key).catch(() => null)) as StoredFlow | null;
     const stored: StoredFlow = {
-      _key: titleToKey(flowId),
+      _key: key,
       title: flowId,
       nodes: body,
+      edges: existing?.edges ?? [],
       updatedAt: new Date().toISOString(),
     };
     const result = await collection.save(stored, { overwriteMode: 'replace' });
-    res.json({ data: body, meta: { _id: result._id, _rev: result._rev } });
+    res.json({ data: body, meta: { _id: result._id, _rev: result._rev, edges: stored.edges?.length ?? 0 } });
   } catch (err: any) {
     console.error('PUT flow error:', err);
     res.status(500).json({ error: err.message || 'Internal error' });
