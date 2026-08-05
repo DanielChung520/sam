@@ -4,6 +4,9 @@
 // 發送好友時建立一個任務（targets = 全部選中好友），由 newsPushScheduler
 // 依 nextBatchAt 逐批處理（每批 ≤ batchSize），sent 累計進度。
 //
+// 另外保存「發送好友設定」（news_push_settings，每 channel 一份）：業務員勾選好友後
+// 保存，news scheduler 抓好新聞後隨即依 targets 建立批次任務發送（時機與新聞追蹤一致）。
+//
 // 多租戶：所有查詢帶 channelId 過濾（憲法級規範）。
 
 import { randomUUID } from 'node:crypto';
@@ -87,4 +90,57 @@ export async function updateNewsPushTask(
   const updated = { ...existing, ...patch };
   await db.collection(COLLECTION).update(id, updated);
   return updated;
+}
+
+// ─── 發送好友設定（news_push_settings）───────────────────
+
+export interface NewsPushSetting {
+  _key: string;                    // channelId
+  channelId: string;
+  targets: string[];               // 保存的好友 LINE userId 清單
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+const SETTING_COLLECTION = 'news_push_settings';
+
+export async function ensureNewsPushSettingCollection(): Promise<void> {
+  await ensureCollection(SETTING_COLLECTION);
+}
+
+/** 取得某 channel 的發送好友設定（無則回 null） */
+export async function getPushSetting(channelId: string): Promise<NewsPushSetting | null> {
+  await ensureNewsPushSettingCollection();
+  const db = getDb();
+  try {
+    return (await db.collection(SETTING_COLLECTION).document(channelId)) as NewsPushSetting;
+  } catch {
+    return null;
+  }
+}
+
+/** 保存（覆蓋式）：重新勾選即取代好友清單 */
+export async function upsertPushSetting(
+  channelId: string,
+  fields: Partial<Omit<NewsPushSetting, '_key' | 'channelId' | 'createdAt'>>,
+): Promise<NewsPushSetting> {
+  await ensureNewsPushSettingCollection();
+  const db = getDb();
+  const existing = await getPushSetting(channelId);
+  const now = Date.now();
+  const doc: NewsPushSetting = {
+    ...(existing ?? {
+      channelId,
+      targets: [],
+      enabled: true,
+      createdAt: now,
+    }),
+    ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined)),
+    _key: channelId,
+    channelId,
+    updatedAt: now,
+  };
+  await db.collection(SETTING_COLLECTION).save(doc, { overwriteMode: 'replace' });
+  return doc;
 }

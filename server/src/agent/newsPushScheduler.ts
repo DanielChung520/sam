@@ -1,8 +1,9 @@
 // News push scheduler — 發送好友批次排程
 //
 // 與 newsScheduler 同模式：setTimeout 鏈（非 setInterval）避免疊跑。
-// 每 30 秒掃一次到期任務（pending/sending 且 nextBatchAt <= now），逐批發送。
-// 任務本身 DB 持久化，server 重啟後由 DB 狀態恢復，不會中斷未送完的批次。
+// 每 30 秒掃一次到期批次任務（pending/sending 且 nextBatchAt <= now）逐批發送。
+// 任務由 newsScheduler 抓好新聞後建立（時機與新聞追蹤一致），DB 持久化，
+// server 重啟後由 DB 狀態恢復，不會中斷未送完的批次。
 
 import { listDueNewsPushTasks } from '../data/newsPushRepo.js';
 import { processNewsPushBatch } from './newsService.js';

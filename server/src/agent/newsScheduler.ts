@@ -4,8 +4,9 @@
 // （依 schedule.type / timesPerDay / lastRunAt 計算下次時間），到期才執行。
 // 用 setTimeout 鏈（非 setInterval），避免前一次執行未完成時疊跑。
 
-import { listEnabledSubscriptions, upsertSubscription, type NewsSubscription } from '../data/newsRepo.js';
-import { fetchAllTopics } from './newsService.js';
+import { listEnabledSubscriptions, upsertSubscription, type NewsSubscription, type NewsSchedule } from '../data/newsRepo.js';
+import { getPushSetting } from '../data/newsPushRepo.js';
+import { fetchAllTopics, createNewsPush, processNewsPushBatch } from './newsService.js';
 import { logger } from './logger.js';
 
 const CHECK_INTERVAL_MS = 60_000;
@@ -36,6 +37,10 @@ async function tick(): Promise<void> {
         await fetchAllTopics(sub.channelId, sub).catch((e) =>
           logger.warn('news.scheduler.topic_failed', { channelId: sub.channelId, error: String(e) })
         );
+        // 抓好新聞後隨即發送給已保存的好友清單（時機與新聞追蹤一致）
+        await dispatchPushToTargets(sub.channelId).catch((e) =>
+          logger.warn('news.scheduler.push_failed', { channelId: sub.channelId, error: String(e) })
+        );
       }
     }
   } catch (e) {
@@ -45,13 +50,30 @@ async function tick(): Promise<void> {
   }
 }
 
-function shouldFetch(sub: NewsSubscription): boolean {
-  if (sub.enabled === false || !sub.topics || sub.topics.length === 0) return false;
+// 若有保存的發送好友清單，建立批次任務並立即送首批
+async function dispatchPushToTargets(channelId: string): Promise<void> {
+  const setting = await getPushSetting(channelId);
+  if (!setting || setting.enabled === false || setting.targets.length === 0) return;
+  logger.info('news.scheduler.push_dispatch', { channelId, targets: setting.targets.length });
+  const task = await createNewsPush(channelId, setting.targets);
+  void processNewsPushBatch(task).catch((e) =>
+    logger.error('news.scheduler.push_batch_failed', { channelId, error: String(e) })
+  );
+}
+
+/** 判斷某排程是否到期該執行（news 抓取與 push 設定共用） */
+export function shouldFetch(input: {
+  enabled?: boolean;
+  topics?: string[];
+  lastRunAt?: number;
+  schedule?: Partial<NewsSchedule>;
+}): boolean {
+  if (input.enabled === false || !input.topics || input.topics.length === 0) return false;
   const now = Date.now();
-  const last = sub.lastRunAt ?? 0;
+  const last = input.lastRunAt ?? 0;
   if (now - last < MIN_GAP_MS) return false;
 
-  const s = sub.schedule ?? {};
+  const s = input.schedule ?? {};
   const type = s.type ?? 'daily';
   const startHour = Math.min(Math.max(s.startHour ?? 8, 0), 23);
   const timesPerDay = Math.min(Math.max(s.timesPerDay ?? 1, 1), 24);

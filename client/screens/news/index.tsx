@@ -24,6 +24,8 @@ import {
   getContacts,
   pushNewsToUser,
   getNewsPushTasks,
+  getNewsPushSetting,
+  saveNewsPushSetting,
   type NewsItem,
   type ContactListItem,
   type NewsPushTaskInfo,
@@ -47,13 +49,13 @@ export default function NewsScreen() {
   const [showPushModal, setShowPushModal] = useState(false);
   const [pushContacts, setPushContacts] = useState<ContactListItem[]>([]);
   const [pushLoading, setPushLoading] = useState(false);
-  const [pushSending, setPushSending] = useState(false);
   const [pushMsg, setPushMsg] = useState('');
   const [pushTag, setPushTag] = useState('全部');
   const [pushSearch, setPushSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pushTask, setPushTask] = useState<NewsPushTaskInfo | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
+  const [pushSaving, setPushSaving] = useState(false);
   const router = useSafeRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -286,7 +288,7 @@ export default function NewsScreen() {
     }
   }, [pushTag, pushSearch]);
 
-  const openPushModal = useCallback(() => {
+  const openPushModal = useCallback(async () => {
     setShowMenu(false);
     setPushMsg('');
     setSelectedIds(new Set());
@@ -294,6 +296,14 @@ export default function NewsScreen() {
     setPushSearch('');
     setShowPushModal(true);
     fetchPushContacts();
+    try {
+      const { data } = await getNewsPushSetting();
+      if (data) {
+        setSelectedIds(new Set(data.targets));
+      }
+    } catch (e) {
+      console.error('Failed to load push setting:', e);
+    }
   }, [fetchPushContacts]);
 
   const toggleSelect = useCallback((contactId: string) => {
@@ -341,23 +351,23 @@ export default function NewsScreen() {
     }
   }, [pollPushTask]);
 
-  // 建立發送任務（LINE 流量管制：每批 ≤8 人、批間隔 5 分鐘，server 背景逐批發送）
-  const sendPushToSelected = useCallback(async () => {
-    if (pushSending || selectedIds.size === 0) return;
-    setPushSending(true);
+  // 保存發送好友設定（好友清單），發送時機與新聞追蹤一致：抓好新聞後由 server 自動批次發送
+  const savePushSetting = useCallback(async () => {
+    if (pushSaving || selectedIds.size === 0) return;
+    setPushSaving(true);
     setPushMsg('');
     try {
-      const { data } = await pushNewsToUser([...selectedIds]);
+      await saveNewsPushSetting({ userIds: [...selectedIds] });
+      setPushMsg(`已保存，新聞更新時自動發送給 ${selectedIds.size} 位好友`);
       setShowPushModal(false);
       setSelectedIds(new Set());
-      pollPushTask(data.taskId);
     } catch (e) {
-      console.error('Failed to push news:', e);
-      setPushMsg('發送失敗，請稍後再試');
+      console.error('Failed to save push setting:', e);
+      setPushMsg('保存失敗，請稍後再試');
     } finally {
-      setPushSending(false);
+      setPushSaving(false);
     }
-  }, [pushSending, selectedIds, pollPushTask]);
+  }, [pushSaving, selectedIds]);
 
   // 即時更新：觸發 server 抓取最新新聞 → 輪詢直到完成 → 重新載入列表
   const handleRefresh = useCallback(async () => {
@@ -547,8 +557,8 @@ export default function NewsScreen() {
       >
         <View style={styles.modalBackdrop}>
           <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 24 }]}>
-            <Text style={styles.modalTitle}>發送好友</Text>
-            <Text style={styles.modalSubtitle}>勾選好友，將最新新聞推播給他們</Text>
+            <Text style={styles.modalTitle}>設定發送好友</Text>
+            <Text style={styles.modalSubtitle}>勾選好友，新聞更新時自動發送最新內容</Text>
 
             <TextInput
               style={styles.pushSearchInput}
@@ -590,7 +600,7 @@ export default function NewsScreen() {
                     <TouchableOpacity
                       style={styles.pushContactItem}
                       activeOpacity={0.6}
-                      disabled={pushSending}
+                      disabled={pushSaving}
                       onPress={() => toggleSelect(item.id.toString())}
                     >
                       <View style={styles.pushContactAvatar}>
@@ -630,14 +640,14 @@ export default function NewsScreen() {
               <TouchableOpacity
                 style={styles.pushSendBtn}
                 activeOpacity={0.7}
-                disabled={pushSending || selectedIds.size === 0}
-                onPress={sendPushToSelected}
+                disabled={pushSaving || selectedIds.size === 0}
+                onPress={savePushSetting}
               >
-                {pushSending ? (
+                {pushSaving ? (
                   <ActivityIndicator size="small" color={colors.textOnPrimary} />
                 ) : (
                   <Text style={styles.pushSendBtnText}>
-                    發送{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+                    保存{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
                   </Text>
                 )}
               </TouchableOpacity>

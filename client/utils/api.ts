@@ -270,6 +270,41 @@ export async function getNewsPushTasks() {
   return json;
 }
 
+export interface NewsSchedule {
+  type: 'daily' | 'weekly';
+  timesPerDay: number;
+  startHour: number;
+  intervalHours: number;
+  days: number[];
+  followSystem: boolean;
+  tzOffset: number;
+}
+
+export interface NewsPushSettingInfo {
+  targets: string[];
+  enabled: boolean;
+  updatedAt: number;
+}
+
+// 取得發送好友設定（好友清單）
+export async function getNewsPushSetting() {
+  const json = await request<{ data: NewsPushSettingInfo | null }>('GET', '/news/push/setting');
+  return json;
+}
+
+// 保存發送好友設定（覆蓋式）。發送時機與新聞追蹤一致：news scheduler 抓好新聞後隨即自動發送
+export async function saveNewsPushSetting(input: {
+  userIds: string[];
+  enabled?: boolean;
+}) {
+  const json = await request<{ ok: boolean; total: number }>(
+    'PUT',
+    '/news/push/setting',
+    input,
+  );
+  return { data: json };
+}
+
 // ─── Greetings ─────────────────────────────────────────
 
 export interface GreetingItem {

@@ -15,7 +15,7 @@ import {
   listNewsItems,
 } from '../data/newsRepo.js';
 import { fetchAllTopics, createNewsPush, processNewsPushBatch } from '../agent/newsService.js';
-import { listNewsPushTasks } from '../data/newsPushRepo.js';
+import { listNewsPushTasks, getPushSetting, upsertPushSetting } from '../data/newsPushRepo.js';
 import { getChannelId } from '../lib/authJwt.js';
 import { logger } from '../agent/logger.js';
 
@@ -174,6 +174,48 @@ router.get('/news/push/tasks', async (req: any, res: any) => {
     });
   } catch (e) {
     logger.error('news.push.tasks.failed', { channelId, error: String(e) });
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// GET /api/v1/news/push/setting - 取得發送好友設定（好友清單）
+router.get('/news/push/setting', async (req: any, res: any) => {
+  const channelId = requireChannel(req, res);
+  if (!channelId) return;
+  try {
+    const setting = await getPushSetting(channelId);
+    if (!setting) return res.json({ data: null });
+    res.json({
+      data: {
+        targets: setting.targets,
+        enabled: setting.enabled,
+        updatedAt: setting.updatedAt,
+      },
+    });
+  } catch (e) {
+    logger.error('news.push.setting.get.failed', { channelId, error: String(e) });
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// PUT /api/v1/news/push/setting - 保存發送好友設定（覆蓋式：重新勾選即取代）
+// body: { userIds: string[] }
+// 發送時機與新聞追蹤一致：news scheduler 抓好新聞後隨即自動發送
+router.put('/news/push/setting', async (req: any, res: any) => {
+  const channelId = requireChannel(req, res);
+  if (!channelId) return;
+  const body = req.body ?? {};
+  const userIds = Array.isArray(body.userIds)
+    ? body.userIds.filter((id: unknown) => typeof id === 'string')
+    : [];
+  try {
+    const setting = await upsertPushSetting(channelId, {
+      targets: userIds,
+      enabled: typeof body.enabled === 'boolean' ? body.enabled : undefined,
+    });
+    res.json({ ok: true, total: setting.targets.length });
+  } catch (e) {
+    logger.error('news.push.setting.save.failed', { channelId, error: String(e) });
     res.status(500).json({ error: String(e) });
   }
 });

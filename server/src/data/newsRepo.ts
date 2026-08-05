@@ -8,6 +8,16 @@
 
 import { getDb, ensureCollection } from './arango.js';
 
+export interface NewsSchedule {
+  type: 'daily' | 'weekly';
+  timesPerDay: number;           // 每日次數 1-24
+  startHour: number;             // 每日首次抓取時刻（0-23，local）
+  intervalHours: number;         // timesPerDay > 1 時每次間隔（local 小時）
+  days: number[];                // weekly：0=日 ... 6=六
+  followSystem: boolean;         // 時區跟隨系統
+  tzOffset: number;              // UTC 偏移小時
+}
+
 export interface NewsSubscription {
   _key: string;                    // channelId
   channelId: string;
@@ -16,15 +26,7 @@ export interface NewsSubscription {
   autoSummarize: boolean;
   highlightKeywords: boolean;
   analysisPrompt: string;          // 分析 prompt（支援 {標題} {摘要} {主題} {來源} 變數）
-  schedule: {
-    type: 'daily' | 'weekly';
-    timesPerDay: number;           // 每日次數 1-24
-    startHour: number;             // 每日首次抓取時刻（0-23，local）
-    intervalHours: number;         // timesPerDay > 1 時每次間隔（local 小時）
-    days: number[];                // weekly：0=日 ... 6=六
-    followSystem: boolean;         // 時區跟隨系統
-    tzOffset: number;              // UTC 偏移小時
-  };
+  schedule: NewsSchedule;
   enabled: boolean;
   lastRunAt?: number;              // 上次抓取時間
   createdAt: number;
