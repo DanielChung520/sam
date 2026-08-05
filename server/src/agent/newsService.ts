@@ -8,6 +8,7 @@
 import { chatCompletion } from './llmClient.js';
 import { searchWeb, type SearchResultItem } from './skills/manifests/webSearch.js';
 import { upsertNewsItem, listNewsItems, type NewsSubscription } from '../data/newsRepo.js';
+import { findPrimaryContact } from '../data/contactRepo.js';
 import { getClientByChannelKey } from '../lib/lineClient.js';
 import { chunkForLine } from './responseFormatter.js';
 import { logger } from './logger.js';
@@ -58,19 +59,20 @@ export async function fetchAllTopics(channelId: string, sub: NewsSubscription): 
       logger.warn('news.topic_failed', { channelId, topic, error: String(e) });
     }
   }
-  // 「發送主身」：抓取完成後將最新新聞推播到主身（channel destination）
+  // 「發送主身」：抓取完成後將最新新聞推播到主身好友（isPrimary=true）
   if (sub.pushToOwner) {
     await pushLatestNewsToOwner(channelId);
   }
 }
 
-/** 推播最新新聞到主身帳號（channel destination） */
+/** 推播最新新聞到主身好友（isPrimary=true，無主身時跳過） */
 async function pushLatestNewsToOwner(channelId: string): Promise<void> {
   try {
     const cc = await getClientByChannelKey(channelId);
     if (!cc) return;
-    if (!cc.channel.destination) {
-      logger.warn('news.push_owner.no_destination', { channelId });
+    const owner = await findPrimaryContact(channelId);
+    if (!owner) {
+      logger.warn('news.push_owner.no_primary', { channelId });
       return;
     }
     if (cc.channel.pushEnabled === false) {
@@ -87,11 +89,11 @@ async function pushLatestNewsToOwner(channelId: string): Promise<void> {
     const header = '📰 最新新聞追蹤\n\n';
     for (const chunk of chunkForLine(header + lines.join('\n\n'))) {
       await cc.client.pushMessage({
-        to: cc.channel.destination,
+        to: owner.userId,
         messages: [{ type: 'text', text: chunk }],
       });
     }
-    logger.info('news.push_owner.done', { channelId, count: items.length });
+    logger.info('news.push_owner.done', { channelId, to: owner.userId, count: items.length });
   } catch (e) {
     logger.error('news.push_owner.failed', { channelId, error: String(e) });
   }

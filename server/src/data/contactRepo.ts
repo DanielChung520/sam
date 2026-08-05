@@ -109,6 +109,18 @@ export async function setPrimaryContact(channelId: string, userId: string, isPri
   );
 }
 
+/** 查某 channel 的主身好友（isPrimary=true，每 channel 唯一） */
+export async function findPrimaryContact(channelId: string): Promise<Contact | null> {
+  await ensureContactsCollection();
+  const db = getDb();
+  const cursor = await db.query(
+    `FOR c IN ${COLLECTION} FILTER c.channelId == @cid AND c.isPrimary == true LIMIT 1 RETURN c`,
+    { cid: channelId },
+  );
+  const list = (await cursor.all()) as Contact[];
+  return list[0] ?? null;
+}
+
 export async function markContactUnread(channelId: string, userId: string, isUnread: boolean): Promise<void> {
   const contact = await findContact(channelId, userId);
   if (!contact) return;
