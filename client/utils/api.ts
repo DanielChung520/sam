@@ -126,6 +126,7 @@ export interface ContactListItem {
   avatar: string;
   lastMessage: string;
   lastMessageTime: string;
+  isPrimary?: boolean;
 }
 
 export async function getContacts(tag?: string, search?: string) {
@@ -156,6 +157,7 @@ export async function updateContact(contactId: string, fields: {
   remark?: string;
   tags?: string[];
   displayName?: string;
+  isPrimary?: boolean;
 }) {
   return request<{ data: any }>('PATCH', `/contacts/${contactId}`, fields);
 }

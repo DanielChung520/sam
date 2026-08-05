@@ -4,7 +4,7 @@
 // 資料來源：webhook 事件累積（contactRepo）+ 訊息（messageRepo）
 
 import { Router } from 'express';
-import { listContactsByChannel, findContact, updateContactProfile, type Contact } from '../data/contactRepo.js';
+import { listContactsByChannel, findContact, updateContactProfile, setPrimaryContact, type Contact } from '../data/contactRepo.js';
 import { listMessages } from '../data/messageRepo.js';
 import { logger } from '../agent/logger.js';
 
@@ -38,6 +38,7 @@ function toDto(c: Contact): Record<string, unknown> {
     remark: c.remark ?? '',
     score: c.score ?? 0,
     tags: c.tags ?? [],
+    isPrimary: c.isPrimary ?? false,
     avatar: c.pictureUrl ?? '',
     lastMessage: '',
     lastMessageTime: '',
@@ -95,7 +96,7 @@ router.patch('/:id', async (req: any, res) => {
   const {
     title, nickname, honorific, salutation, gender, birthday, ageGroup,
     phone, email, company, address, remark, tags,
-    displayName, pictureUrl, statusMessage,
+    displayName, pictureUrl, statusMessage, isPrimary,
   } = req.body ?? {};
   try {
     const existing = await findContact(channelId, userId);
@@ -118,6 +119,10 @@ router.patch('/:id', async (req: any, res) => {
       remark,
       tags: Array.isArray(tags) ? tags : undefined,
     });
+    // 主身標記：每 channel 唯一（設 true 時其他好友自動清除）
+    if (typeof isPrimary === 'boolean') {
+      await setPrimaryContact(channelId, userId, isPrimary);
+    }
     const updated = await findContact(channelId, userId);
     res.json({ data: updated ? toDto(updated) : null });
   } catch (e) {
