@@ -158,15 +158,15 @@ export default function FriendsScreen() {
       width: 22,
       height: 22,
       borderRadius: 11,
-      backgroundColor: c.bgInput,
+      backgroundColor: c.bgInputAlt,
       borderWidth: 2,
-      borderColor: c.surface,
+      borderColor: c.border,
       justifyContent: 'center',
       alignItems: 'center',
     },
     primaryBadgeActive: {
       backgroundColor: c.accent,
-      borderColor: c.surface,
+      borderColor: c.border,
     },
     contactInfo: { flex: 1, marginLeft: 12 },
     nameRow: {
@@ -241,7 +241,7 @@ export default function FriendsScreen() {
           <FontAwesome6
             name={item.isPrimary ? 'crown' : 'user'}
             size={10}
-            color={item.isPrimary ? colors.textOnPrimary : colors.textTertiary}
+            color={item.isPrimary ? colors.textOnPrimary : colors.textSecondary}
           />
         </TouchableOpacity>
       </View>
