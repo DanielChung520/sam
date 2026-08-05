@@ -11,6 +11,7 @@ import { upsertNewsItem, listNewsItems, type NewsSubscription } from '../data/ne
 import {
   createNewsPushTask,
   updateNewsPushTask,
+  getPushSetting,
   type NewsPushTask,
 } from '../data/newsPushRepo.js';
 import { getClientByChannelKey } from '../lib/lineClient.js';
@@ -85,6 +86,17 @@ export async function createNewsPush(channelId: string, userIds: string[]): Prom
     batchIntervalMs: BATCH_INTERVAL_MS,
     nextBatchAt: Date.now(), // 首批立即發送
   });
+}
+
+/** 抓好新聞後隨即發送給已保存的好友清單（排程抓取與即時更新共用） */
+export async function dispatchPushToTargets(channelId: string): Promise<void> {
+  const setting = await getPushSetting(channelId);
+  if (!setting || setting.enabled === false || setting.targets.length === 0) return;
+  logger.info('news.push_dispatch', { channelId, targets: setting.targets.length });
+  const task = await createNewsPush(channelId, setting.targets);
+  void processNewsPushBatch(task).catch((e) =>
+    logger.error('news.push_dispatch.batch_failed', { channelId, error: String(e) })
+  );
 }
 
 /** 從最新 news_items 建構推播內容（無新聞回 null） */

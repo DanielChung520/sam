@@ -5,8 +5,7 @@
 // 用 setTimeout 鏈（非 setInterval），避免前一次執行未完成時疊跑。
 
 import { listEnabledSubscriptions, upsertSubscription, type NewsSubscription, type NewsSchedule } from '../data/newsRepo.js';
-import { getPushSetting } from '../data/newsPushRepo.js';
-import { fetchAllTopics, createNewsPush, processNewsPushBatch } from './newsService.js';
+import { fetchAllTopics, dispatchPushToTargets } from './newsService.js';
 import { logger } from './logger.js';
 
 const CHECK_INTERVAL_MS = 60_000;
@@ -48,17 +47,6 @@ async function tick(): Promise<void> {
   } finally {
     timer = setTimeout(tick, CHECK_INTERVAL_MS);
   }
-}
-
-// 若有保存的發送好友清單，建立批次任務並立即送首批
-async function dispatchPushToTargets(channelId: string): Promise<void> {
-  const setting = await getPushSetting(channelId);
-  if (!setting || setting.enabled === false || setting.targets.length === 0) return;
-  logger.info('news.scheduler.push_dispatch', { channelId, targets: setting.targets.length });
-  const task = await createNewsPush(channelId, setting.targets);
-  void processNewsPushBatch(task).catch((e) =>
-    logger.error('news.scheduler.push_batch_failed', { channelId, error: String(e) })
-  );
 }
 
 /** 判斷某排程是否到期該執行（news 抓取與 push 設定共用） */

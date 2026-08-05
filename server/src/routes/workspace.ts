@@ -14,7 +14,7 @@ import {
   upsertSubscription,
   listNewsItems,
 } from '../data/newsRepo.js';
-import { fetchAllTopics, createNewsPush, processNewsPushBatch } from '../agent/newsService.js';
+import { fetchAllTopics, createNewsPush, processNewsPushBatch, dispatchPushToTargets } from '../agent/newsService.js';
 import { listNewsPushTasks, getPushSetting, upsertPushSetting } from '../data/newsPushRepo.js';
 import { getChannelId } from '../lib/authJwt.js';
 import { logger } from '../agent/logger.js';
@@ -107,6 +107,7 @@ router.patch('/news/subscription', async (req: any, res: any) => {
 });
 
 // POST /api/v1/news/fetch - 手動觸發立即抓取一輪（不等待結果，背景執行）
+// 抓好新聞後隨即發送給已保存的好友清單（與新聞追蹤排程一致）
 router.post('/news/fetch', async (req: any, res: any) => {
   const channelId = requireChannel(req, res);
   if (!channelId) return;
@@ -116,9 +117,14 @@ router.post('/news/fetch', async (req: any, res: any) => {
       return res.status(400).json({ error: 'no subscription topics configured' });
     }
     res.json({ ok: true, message: 'fetch started' });
-    fetchAllTopics(channelId, sub).catch((e) =>
-      logger.error('news.fetch.failed', { channelId, error: String(e) })
-    );
+    void (async () => {
+      await fetchAllTopics(channelId, sub).catch((e) =>
+        logger.error('news.fetch.failed', { channelId, error: String(e) })
+      );
+      await dispatchPushToTargets(channelId).catch((e) =>
+        logger.error('news.fetch.push_failed', { channelId, error: String(e) })
+      );
+    })();
   } catch (e) {
     logger.error('news.fetch.start.failed', { channelId, error: String(e) });
     res.status(500).json({ error: String(e) });
