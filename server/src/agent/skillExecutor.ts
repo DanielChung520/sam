@@ -16,7 +16,6 @@ import type {
 } from './types.js';
 import { AgentError, toAgentError } from './errors.js';
 import { Metrics } from '../lib/metrics.js';
-import { getSkillRegistry } from './skillRegistry.js';
 
 export type InlineSkillHandler = (
   args: Record<string, unknown>,
@@ -144,6 +143,7 @@ private async executeInner(
       args,
       log: (...xs: unknown[]) => sandboxLogs.push(xs.map(String).join(' ')),
       callSkill: async (skillId: string, skillArgs: Record<string, unknown> = {}) => {
+        const { getSkillRegistry } = await import('./skillRegistry.js');
         const registry = await getSkillRegistry();
         const skill = registry.get(skillId);
         if (!skill) throw new AgentError('SKILL_NOT_FOUND', `skill not found: ${skillId}`);

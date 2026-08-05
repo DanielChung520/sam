@@ -20,6 +20,7 @@ import sttManifest from './skills/manifests/stt.js';
 import readmeManifest from './skills/manifests/readme.js';
 import imageRouterManifest from './skills/manifests/imageRouter.js';
 import greetingCardManifest from './skills/manifests/greetingCard.js';
+import weatherManifest from './skills/manifests/weather.js';
 
 const BUILTIN_MANIFESTS: SkillManifest[] = [
   greetingManifest,
@@ -34,6 +35,7 @@ const BUILTIN_MANIFESTS: SkillManifest[] = [
   readmeManifest,
   imageRouterManifest,
   greetingCardManifest,
+  weatherManifest,
 ];
 
 export class SkillRegistry {
