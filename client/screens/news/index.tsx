@@ -17,6 +17,7 @@ import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import {
   getNews,
   getNewsSubscription,
@@ -228,6 +229,7 @@ export default function NewsScreen() {
     },
     categoryText: { fontSize: 11, fontWeight: '600', color: c.sky },
     sourceText: { fontSize: 11, color: c.textTertiary },
+    newsSourceRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
     newsTitle: {
       fontSize: 16,
       fontWeight: '700',
@@ -416,13 +418,32 @@ export default function NewsScreen() {
     }, [fetchTabs, fetchNews, resumePushTask])
   );
 
+  // 點擊新聞卡片 → 開啟原文連結（無 url 不響應）
+  const openNewsLink = useCallback(async (url?: string) => {
+    if (!url) return;
+    try {
+      await WebBrowser.openBrowserAsync(url);
+    } catch (e) {
+      console.error('Failed to open news link:', e);
+    }
+  }, []);
+
   const renderNews = ({ item }: { item: NewsItem }) => (
-    <TouchableOpacity style={styles.newsCard} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={styles.newsCard}
+      activeOpacity={0.7}
+      onPress={() => openNewsLink(item.url)}
+    >
       <View style={styles.newsHeader}>
         <View style={styles.categoryBadge}>
           <Text style={styles.categoryText}>{item.topic || item.category}</Text>
         </View>
-        <Text style={styles.sourceText}>{item.source} · {item.time}</Text>
+        <View style={styles.newsSourceRow}>
+          <Text style={styles.sourceText}>{item.source} · {item.time}</Text>
+          {item.url ? (
+            <FontAwesome6 name="arrow-up-right-from-square" size={11} color={colors.textTertiary} />
+          ) : null}
+        </View>
       </View>
       <Text style={styles.newsTitle}>{item.title}</Text>
       <Text style={styles.newsSummary} numberOfLines={3}>{item.summary}</Text>
