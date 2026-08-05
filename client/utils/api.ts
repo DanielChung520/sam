@@ -244,8 +244,30 @@ export async function triggerNewsFetch() {
 }
 
 export async function pushNewsToUser(userIds: string[]) {
-  const json = await request<{ ok: boolean; message: string }>('POST', '/news/push', { userIds });
+  const json = await request<{ ok: boolean; taskId: string; total: number; batches: number }>(
+    'POST',
+    '/news/push',
+    { userIds },
+  );
   return { data: json };
+}
+
+export interface NewsPushTaskInfo {
+  id: string;
+  status: 'pending' | 'sending' | 'completed' | 'failed';
+  total: number;
+  sent: number;
+  batchSize: number;
+  batchIntervalMs: number;
+  nextBatchAt: number;
+  createdAt: number;
+  completedAt?: number;
+}
+
+// 發送任務進度（批次管制：每批 ≤8 人、批間隔 5 分鐘）
+export async function getNewsPushTasks() {
+  const json = await request<{ data: NewsPushTaskInfo[] }>('GET', '/news/push/tasks');
+  return json;
 }
 
 // ─── Greetings ─────────────────────────────────────────

@@ -8,9 +8,18 @@
 import { chatCompletion } from './llmClient.js';
 import { searchWeb, type SearchResultItem } from './skills/manifests/webSearch.js';
 import { upsertNewsItem, listNewsItems, type NewsSubscription } from '../data/newsRepo.js';
+import {
+  createNewsPushTask,
+  updateNewsPushTask,
+  type NewsPushTask,
+} from '../data/newsPushRepo.js';
 import { getClientByChannelKey } from '../lib/lineClient.js';
 import { chunkForLine } from './responseFormatter.js';
 import { logger } from './logger.js';
+
+/** LINE 流量管制：每批次最多發送人數、批間隔（可被 env 覆寫） */
+const BATCH_SIZE = Number(process.env.NEWS_PUSH_BATCH_SIZE) || 8;
+const BATCH_INTERVAL_MS = Number(process.env.NEWS_PUSH_BATCH_INTERVAL_MS) || 5 * 60 * 1000;
 
 const SUMMARY_LEN_HINT: Record<NewsSubscription['summaryLen'], string> = {
   short: '請用 1-2 句（100 字以內）摘要',
@@ -60,43 +69,102 @@ export async function fetchAllTopics(channelId: string, sub: NewsSubscription): 
   }
 }
 
-/** 推播最新新聞到指定好友（業務員手動挑選，可一次多個） */
-export async function pushNewsToUser(channelId: string, userIds: string[]): Promise<void> {
-  try {
-    const cc = await getClientByChannelKey(channelId);
-    if (!cc) return;
-    const targets = (userIds ?? []).filter((id) => typeof id === 'string' && id.length > 0);
-    if (targets.length === 0) {
-      logger.warn('news.push.no_user', { channelId });
-      return;
-    }
-    if (cc.channel.pushEnabled === false) {
-      logger.warn('news.push.disabled', { channelId });
-      return;
-    }
-    const items = await listNewsItems(channelId, 5);
-    if (items.length === 0) return;
-
-    const lines = items.map((n, i) => {
-      const url = n.url ? `\n${n.url}` : '';
-      return `${i + 1}. 【${n.topic || n.category}】${n.title}${url}\n${(n.summary ?? '').slice(0, 80)}`;
-    });
-    const header = '📰 最新新聞追蹤\n\n';
-    for (const chunk of chunkForLine(header + lines.join('\n\n'))) {
-      for (const to of targets) {
-        await cc.client.pushMessage({
-          to,
-          messages: [{ type: 'text', text: chunk }],
-        });
-      }
-    }
-    logger.info('news.push.done', { channelId, to: targets, count: items.length });
-  } catch (e) {
-    logger.error('news.push.failed', { channelId, error: String(e) });
+/** 建立發送任務：把選中好友存成 DB 任務，由 scheduler 依批次管制逐批發送 */
+export async function createNewsPush(channelId: string, userIds: string[]): Promise<NewsPushTask> {
+  const targets = (userIds ?? []).filter((id) => typeof id === 'string' && id.length > 0);
+  if (targets.length === 0) {
+    throw new Error('userIds required');
   }
+  return createNewsPushTask({
+    channelId,
+    targets,
+    total: targets.length,
+    sent: 0,
+    status: 'pending',
+    batchSize: BATCH_SIZE,
+    batchIntervalMs: BATCH_INTERVAL_MS,
+    nextBatchAt: Date.now(), // 首批立即發送
+  });
 }
 
-// ─── 抓取 ────────────────────────────────────────────────
+/** 從最新 news_items 建構推播內容（無新聞回 null） */
+export async function buildNewsPushLines(channelId: string): Promise<string[] | null> {
+  const items = await listNewsItems(channelId, 5);
+  if (items.length === 0) return null;
+  const lines = items.map((n, i) => {
+    const url = n.url ? `\n${n.url}` : '';
+    return `${i + 1}. 【${n.topic || n.category}】${n.title}${url}\n${(n.summary ?? '').slice(0, 80)}`;
+  });
+  return chunkForLine('📰 最新新聞追蹤\n\n' + lines.join('\n\n'));
+}
+
+/** 處理任務的下一批（≤ batchSize 人），更新 sent / status / nextBatchAt */
+export async function processNewsPushBatch(task: NewsPushTask): Promise<void> {
+  if (task.status === 'completed' || task.status === 'failed') return;
+  try {
+    const cc = await getClientByChannelKey(task.channelId);
+    if (!cc || cc.channel.pushEnabled === false) {
+      await updateNewsPushTask(task._key, { status: 'failed', error: 'channel unavailable' });
+      return;
+    }
+    const chunks = await buildNewsPushLines(task.channelId);
+    if (!chunks) {
+      await updateNewsPushTask(task._key, { status: 'failed', error: 'no news items' });
+      return;
+    }
+
+    const batch = task.targets.slice(task.sent, task.sent + task.batchSize);
+    let failed = 0;
+    for (const chunk of chunks) {
+      for (const to of batch) {
+        try {
+          await cc.client.pushMessage({ to, messages: [{ type: 'text', text: chunk }] });
+        } catch (e) {
+          // 單一用戶失敗不阻塞整批（例如 LINE 端已封鎖/不存在），記數後跳過
+          failed += 1;
+          logger.warn('news.push.target_failed', {
+            taskId: task._key,
+            to,
+            error: String(e),
+          });
+        }
+      }
+    }
+
+    const sent = task.sent + batch.length - failed;
+    if (failed === batch.length) {
+      // 整批皆失敗（如 channel token 失效），停在此批，避免無限期重試
+      await updateNewsPushTask(task._key, { status: 'failed', error: `all ${failed} targets failed` });
+      return;
+    }
+    const done = sent >= task.total;
+    await updateNewsPushTask(task._key, {
+      sent,
+      status: done ? 'completed' : 'sending',
+      completedAt: done ? Date.now() : undefined,
+      nextBatchAt: done ? task.nextBatchAt : Date.now() + task.batchIntervalMs,
+    });
+    logger.info('news.push.batch', {
+      taskId: task._key,
+      channelId: task.channelId,
+      batchSize: batch.length,
+      sent,
+      total: task.total,
+      done,
+    });
+  } catch (e) {
+    logger.error('news.push.batch_failed', {
+      taskId: task._key,
+      channelId: task.channelId,
+      error: String(e),
+    });
+    // 該批失敗：保留原 sent，延後下批再試（避免把任務打成 failed 而中斷）
+    await updateNewsPushTask(task._key, {
+      status: 'sending',
+      nextBatchAt: Date.now() + task.batchIntervalMs,
+    });
+  }
+}// ─── 抓取 ────────────────────────────────────────────────
 
 interface RawNews {
   title: string;

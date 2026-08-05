@@ -14,7 +14,8 @@ import {
   upsertSubscription,
   listNewsItems,
 } from '../data/newsRepo.js';
-import { fetchAllTopics, pushNewsToUser } from '../agent/newsService.js';
+import { fetchAllTopics, createNewsPush, processNewsPushBatch } from '../agent/newsService.js';
+import { listNewsPushTasks } from '../data/newsPushRepo.js';
 import { getChannelId } from '../lib/authJwt.js';
 import { logger } from '../agent/logger.js';
 
@@ -124,7 +125,8 @@ router.post('/news/fetch', async (req: any, res: any) => {
   }
 });
 
-// POST /api/v1/news/push - 手動把最新新聞推播給指定好友（業務員挑選，可多個）
+// POST /api/v1/news/push - 建立發送任務（LINE 流量管制：每批 ≤8 人、批間隔 5 分鐘，
+// 由 newsPushScheduler 背景逐批發送）。回傳 taskId 供 GET /news/push/tasks 查進度。
 router.post('/news/push', async (req: any, res: any) => {
   const channelId = requireChannel(req, res);
   if (!channelId) return;
@@ -138,12 +140,40 @@ router.post('/news/push', async (req: any, res: any) => {
     return res.status(400).json({ error: 'userIds required' });
   }
   try {
-    res.json({ ok: true, message: 'push started' });
-    pushNewsToUser(channelId, userIds).catch((e) =>
-      logger.error('news.push.route.failed', { channelId, error: String(e) })
+    const task = await createNewsPush(channelId, userIds);
+    const batches = Math.ceil(task.total / task.batchSize);
+    res.json({ ok: true, taskId: task._key, total: task.total, batches });
+    // 首批立即發送（scheduler 3 秒內也會接手，此處直接觸發加快回饋）
+    void processNewsPushBatch(task).catch((e) =>
+      logger.error('news.push.route.batch_failed', { channelId, error: String(e) })
     );
   } catch (e) {
     logger.error('news.push.start.failed', { channelId, error: String(e) });
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// GET /api/v1/news/push/tasks - 發送任務清單與進度（client 輪詢用）
+router.get('/news/push/tasks', async (req: any, res: any) => {
+  const channelId = requireChannel(req, res);
+  if (!channelId) return;
+  try {
+    const tasks = await listNewsPushTasks(channelId, 20);
+    res.json({
+      data: tasks.map((t) => ({
+        id: t._key,
+        status: t.status,
+        total: t.total,
+        sent: t.sent,
+        batchSize: t.batchSize,
+        batchIntervalMs: t.batchIntervalMs,
+        nextBatchAt: t.nextBatchAt,
+        createdAt: t.createdAt,
+        completedAt: t.completedAt,
+      })),
+    });
+  } catch (e) {
+    logger.error('news.push.tasks.failed', { channelId, error: String(e) });
     res.status(500).json({ error: String(e) });
   }
 });

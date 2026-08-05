@@ -26,6 +26,7 @@ import mcpToolsRouter from "./routes/mcpTools.js";
 import avatarsRouter from "./routes/avatars.js";
 import { ensureSeeds } from "./scripts/ensureSeeds.js";
 import { startNewsScheduler } from "./agent/newsScheduler.js";
+import { startNewsPushScheduler } from "./agent/newsPushScheduler.js";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -77,4 +78,5 @@ app.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}/`);
   ensureSeeds().catch((e) => console.error('[seed] failed:', e));
   startNewsScheduler();
+  startNewsPushScheduler();
 });

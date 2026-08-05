@@ -23,11 +23,19 @@ import {
   triggerNewsFetch,
   getContacts,
   pushNewsToUser,
+  getNewsPushTasks,
   type NewsItem,
   type ContactListItem,
+  type NewsPushTaskInfo,
 } from '@/utils/api';
 
 const PUSH_TAG_OPTIONS = ['全部', 'VIP', '高意向', '決策者', '沉睡'];
+
+function formatNextBatch(ts: number): string {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
 
 export default function NewsScreen() {
   const [news, setNews] = useState<NewsItem[]>([]);
@@ -44,6 +52,8 @@ export default function NewsScreen() {
   const [pushTag, setPushTag] = useState('全部');
   const [pushSearch, setPushSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pushTask, setPushTask] = useState<NewsPushTaskInfo | null>(null);
+  const pollRef = useRef<NodeJS.Timeout | null>(null);
   const router = useSafeRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -158,6 +168,27 @@ export default function NewsScreen() {
     },
     pushSendBtnText: { fontSize: 15, fontWeight: '700', color: c.textOnPrimary },
     pushMsgText: { fontSize: 13, color: c.sky, textAlign: 'center', flexShrink: 1 },
+    pushProgressBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginHorizontal: 16,
+      marginBottom: 12,
+      backgroundColor: c.sky10,
+      borderRadius: 14,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    pushProgressText: { fontSize: 13, color: c.text, fontWeight: '500', flex: 1 },
+    pushProgressSub: { fontSize: 11, color: c.textSecondary },
+    pushProgressBar: {
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: c.bgInput,
+      marginTop: 8,
+      overflow: 'hidden',
+    },
+    pushProgressFill: { height: 4, borderRadius: 2, backgroundColor: c.sky },
     // alignItems: 'flex-start' 防止 horizontal FlatList 膠囊被 stretch 壓扁（RNW scroll content 預設 stretch）
     tabs: { paddingHorizontal: 16, gap: 8, marginBottom: 16, alignItems: 'flex-start' },
     tabBtn: {
@@ -274,24 +305,59 @@ export default function NewsScreen() {
     });
   }, []);
 
+  // 輪詢發送任務進度，直到 completed/failed 才停
+  const pollPushTask = useCallback(async (taskId: string) => {
+    try {
+      const { data } = await getNewsPushTasks();
+      const task = data.find((t) => t.id === taskId) ?? null;
+      setPushTask(task);
+      if (task && (task.status === 'completed' || task.status === 'failed')) {
+        if (pollRef.current) {
+          clearTimeout(pollRef.current);
+          pollRef.current = null;
+        }
+        // 完成後保留 banner 一段時間再消失
+        setTimeout(() => setPushTask(null), 4000);
+        return;
+      }
+      pollRef.current = setTimeout(() => pollPushTask(taskId), 5000);
+    } catch (e) {
+      console.error('Failed to poll push task:', e);
+      pollRef.current = setTimeout(() => pollPushTask(taskId), 5000);
+    }
+  }, []);
+
+  // 頁面重新載入時恢復進行中（pending/sending）的發送任務進度
+  const resumePushTask = useCallback(async () => {
+    try {
+      const { data } = await getNewsPushTasks();
+      const active = data.find((t) => t.status === 'pending' || t.status === 'sending');
+      if (active) {
+        setPushTask(active);
+        pollPushTask(active.id);
+      }
+    } catch (e) {
+      console.error('Failed to resume push task:', e);
+    }
+  }, [pollPushTask]);
+
+  // 建立發送任務（LINE 流量管制：每批 ≤8 人、批間隔 5 分鐘，server 背景逐批發送）
   const sendPushToSelected = useCallback(async () => {
     if (pushSending || selectedIds.size === 0) return;
     setPushSending(true);
     setPushMsg('');
     try {
-      await pushNewsToUser([...selectedIds]);
-      setPushMsg(`已發送最新新聞到 ${selectedIds.size} 位好友`);
-      setTimeout(() => {
-        setShowPushModal(false);
-        setSelectedIds(new Set());
-      }, 900);
+      const { data } = await pushNewsToUser([...selectedIds]);
+      setShowPushModal(false);
+      setSelectedIds(new Set());
+      pollPushTask(data.taskId);
     } catch (e) {
       console.error('Failed to push news:', e);
       setPushMsg('發送失敗，請稍後再試');
     } finally {
       setPushSending(false);
     }
-  }, [pushSending, selectedIds]);
+  }, [pushSending, selectedIds, pollPushTask]);
 
   // 即時更新：觸發 server 抓取最新新聞 → 輪詢直到完成 → 重新載入列表
   const handleRefresh = useCallback(async () => {
@@ -330,7 +396,14 @@ export default function NewsScreen() {
     useCallback(() => {
       fetchTabs();
       fetchNews();
-    }, [fetchTabs, fetchNews])
+      resumePushTask();
+      return () => {
+        if (pollRef.current) {
+          clearTimeout(pollRef.current);
+          pollRef.current = null;
+        }
+      };
+    }, [fetchTabs, fetchNews, resumePushTask])
   );
 
   const renderNews = ({ item }: { item: NewsItem }) => (
@@ -389,6 +462,42 @@ export default function NewsScreen() {
             <FontAwesome6 name="paper-plane" size={14} color={colors.sky} />
             <Text style={styles.menuItemText}>發送好友</Text>
           </TouchableOpacity>
+        </View>
+      )}
+
+      {pushTask && (
+        <View style={styles.pushProgressBanner}>
+          <FontAwesome6
+            name={pushTask.status === 'failed' ? 'triangle-exclamation' : 'paper-plane'}
+            size={14}
+            color={pushTask.status === 'failed' ? colors.danger : colors.sky}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pushProgressText}>
+              {pushTask.status === 'failed'
+                ? '發送失敗'
+                : pushTask.status === 'completed'
+                  ? '已全部發送完成'
+                  : `發送中 ${pushTask.sent}/${pushTask.total}`}
+            </Text>
+            <Text style={styles.pushProgressSub}>
+              {pushTask.status === 'sending' || pushTask.status === 'pending'
+                ? `下一批 ${formatNextBatch(pushTask.nextBatchAt)}`
+                : pushTask.status === 'completed'
+                  ? `${pushTask.total} 位好友已收到最新新聞`
+                  : '請稍後再試'}
+            </Text>
+            {pushTask.status === 'sending' || pushTask.status === 'pending' ? (
+              <View style={styles.pushProgressBar}>
+                <View
+                  style={[
+                    styles.pushProgressFill,
+                    { width: `${Math.min(100, (pushTask.sent / pushTask.total) * 100)}%` },
+                  ]}
+                />
+              </View>
+            ) : null}
+          </View>
         </View>
       )}
 
