@@ -25,13 +25,20 @@ import adminBusinessDocsRouter from "./routes/adminBusinessDocs.js";
 import mcpToolsRouter from "./routes/mcpTools.js";
 import avatarsRouter from "./routes/avatars.js";
 import { ensureSeeds } from "./scripts/ensureSeeds.js";
+import { startNewsScheduler } from "./agent/newsScheduler.js";
 
 const app = express();
 const port = process.env.PORT || 9091;
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({
+  limit: '50mb',
+  verify: (req: any, _res, buf) => {
+    // 保留原始 body 供 LINE webhook 簽章驗證使用
+    req.rawBody = buf;
+  },
+}));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 app.get('/api/v1/health', (req, res) => {
@@ -69,4 +76,5 @@ app.use('/webhook', webhookRouter);
 app.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}/`);
   ensureSeeds().catch((e) => console.error('[seed] failed:', e));
+  startNewsScheduler();
 });
