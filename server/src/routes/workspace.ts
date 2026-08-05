@@ -124,17 +124,22 @@ router.post('/news/fetch', async (req: any, res: any) => {
   }
 });
 
-// POST /api/v1/news/push - 手動把最新新聞推播給指定好友（業務員挑選）
+// POST /api/v1/news/push - 手動把最新新聞推播給指定好友（業務員挑選，可多個）
 router.post('/news/push', async (req: any, res: any) => {
   const channelId = requireChannel(req, res);
   if (!channelId) return;
-  const userId = req.body?.userId;
-  if (!userId || typeof userId !== 'string') {
-    return res.status(400).json({ error: 'userId required' });
+  const body = req.body ?? {};
+  const userIds = Array.isArray(body.userIds)
+    ? body.userIds.filter((id: unknown) => typeof id === 'string')
+    : typeof body.userId === 'string'
+      ? [body.userId]
+      : [];
+  if (userIds.length === 0) {
+    return res.status(400).json({ error: 'userIds required' });
   }
   try {
     res.json({ ok: true, message: 'push started' });
-    pushNewsToUser(channelId, userId).catch((e) =>
+    pushNewsToUser(channelId, userIds).catch((e) =>
       logger.error('news.push.route.failed', { channelId, error: String(e) })
     );
   } catch (e) {

@@ -243,8 +243,8 @@ export async function triggerNewsFetch() {
   return { data: json };
 }
 
-export async function pushNewsToUser(userId: string) {
-  const json = await request<{ ok: boolean; message: string }>('POST', '/news/push', { userId });
+export async function pushNewsToUser(userIds: string[]) {
+  const json = await request<{ ok: boolean; message: string }>('POST', '/news/push', { userIds });
   return { data: json };
 }
 

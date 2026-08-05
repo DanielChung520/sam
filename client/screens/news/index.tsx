@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Modal,
   Image,
+  TextInput,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Screen } from '@/components/Screen';
@@ -25,6 +26,9 @@ import {
   type NewsItem,
   type ContactListItem,
 } from '@/utils/api';
+
+const PUSH_TAG_OPTIONS = ['全部', 'VIP', '高意向', '決策者', '沉睡'];
+
 export default function NewsScreen() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,6 +41,9 @@ export default function NewsScreen() {
   const [pushLoading, setPushLoading] = useState(false);
   const [pushSending, setPushSending] = useState(false);
   const [pushMsg, setPushMsg] = useState('');
+  const [pushTag, setPushTag] = useState('全部');
+  const [pushSearch, setPushSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const router = useSafeRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -87,12 +94,32 @@ export default function NewsScreen() {
       backgroundColor: c.bg,
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
-      padding: 24,
+      paddingTop: 24,
+      paddingHorizontal: 24,
       paddingBottom: 24,
-      maxHeight: 480,
+      height: '80%',
     },
     modalTitle: { fontSize: 18, fontWeight: '700', color: c.text, marginBottom: 4 },
-    modalSubtitle: { fontSize: 12, color: c.textSecondary, marginBottom: 16 },
+    modalSubtitle: { fontSize: 12, color: c.textSecondary, marginBottom: 12 },
+    pushSearchInput: {
+      backgroundColor: c.bgInput,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      fontSize: 14,
+      color: c.text,
+      marginBottom: 10,
+    },
+    pushTagRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+    pushTagBtn: {
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 16,
+      backgroundColor: c.bgInput,
+    },
+    pushTagBtnActive: { backgroundColor: c.sky },
+    pushTagText: { fontSize: 12, fontWeight: '600', color: c.textSecondary },
+    pushTagTextActive: { color: c.textOnPrimary },
     pushContactItem: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -102,7 +129,35 @@ export default function NewsScreen() {
     pushContactAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.bgSecondary },
     pushContactName: { fontSize: 15, fontWeight: '600', color: c.text },
     pushContactMeta: { fontSize: 12, color: c.textSecondary, marginTop: 2 },
-    pushMsgText: { fontSize: 13, color: c.sky, marginTop: 12, textAlign: 'center' },
+    pushCheckbox: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      borderWidth: 2,
+      borderColor: c.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: 'auto',
+    },
+    pushCheckboxActive: { backgroundColor: c.sky, borderColor: c.sky },
+    pushFooter: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: c.borderLight,
+      marginTop: 8,
+    },
+    pushSendBtn: {
+      flex: 1,
+      backgroundColor: c.sky,
+      borderRadius: 12,
+      paddingVertical: 12,
+      alignItems: 'center',
+    },
+    pushSendBtnText: { fontSize: 15, fontWeight: '700', color: c.textOnPrimary },
+    pushMsgText: { fontSize: 13, color: c.sky, textAlign: 'center', flexShrink: 1 },
     // alignItems: 'flex-start' 防止 horizontal FlatList 膠囊被 stretch 壓扁（RNW scroll content 預設 stretch）
     tabs: { paddingHorizontal: 16, gap: 8, marginBottom: 16, alignItems: 'flex-start' },
     tabBtn: {
@@ -183,14 +238,14 @@ export default function NewsScreen() {
     }
   }, []);
 
-  // 發送主身：開啟好友選擇 modal，挑選後把最新新聞推播給該好友
-  const openPushModal = useCallback(async () => {
-    setShowMenu(false);
-    setPushMsg('');
-    setShowPushModal(true);
-    setPushLoading(true);
+  // 發送好友：開啟好友選擇 modal（支援分類/搜尋/多選），挑選後把最新新聞推播給選中的好友
+  const fetchPushContacts = useCallback(async () => {
     try {
-      const { data } = await getContacts();
+      setPushLoading(true);
+      const { data } = await getContacts(
+        pushTag !== '全部' ? pushTag : undefined,
+        pushSearch || undefined,
+      );
       setPushContacts(data);
     } catch (e) {
       console.error('Failed to load contacts for push:', e);
@@ -198,23 +253,45 @@ export default function NewsScreen() {
     } finally {
       setPushLoading(false);
     }
+  }, [pushTag, pushSearch]);
+
+  const openPushModal = useCallback(() => {
+    setShowMenu(false);
+    setPushMsg('');
+    setSelectedIds(new Set());
+    setPushTag('全部');
+    setPushSearch('');
+    setShowPushModal(true);
+    fetchPushContacts();
+  }, [fetchPushContacts]);
+
+  const toggleSelect = useCallback((contactId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(contactId)) next.delete(contactId);
+      else next.add(contactId);
+      return next;
+    });
   }, []);
 
-  const sendPushToContact = useCallback(async (contactId: string) => {
-    if (pushSending) return;
+  const sendPushToSelected = useCallback(async () => {
+    if (pushSending || selectedIds.size === 0) return;
     setPushSending(true);
     setPushMsg('');
     try {
-      await pushNewsToUser(contactId);
-      setPushMsg('已發送最新新聞到該好友');
-      setTimeout(() => setShowPushModal(false), 800);
+      await pushNewsToUser([...selectedIds]);
+      setPushMsg(`已發送最新新聞到 ${selectedIds.size} 位好友`);
+      setTimeout(() => {
+        setShowPushModal(false);
+        setSelectedIds(new Set());
+      }, 900);
     } catch (e) {
       console.error('Failed to push news:', e);
       setPushMsg('發送失敗，請稍後再試');
     } finally {
       setPushSending(false);
     }
-  }, [pushSending]);
+  }, [pushSending, selectedIds]);
 
   // 即時更新：觸發 server 抓取最新新聞 → 輪詢直到完成 → 重新載入列表
   const handleRefresh = useCallback(async () => {
@@ -310,7 +387,7 @@ export default function NewsScreen() {
             onPress={openPushModal}
           >
             <FontAwesome6 name="paper-plane" size={14} color={colors.sky} />
-            <Text style={styles.menuItemText}>發送主身</Text>
+            <Text style={styles.menuItemText}>發送好友</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -361,8 +438,34 @@ export default function NewsScreen() {
       >
         <View style={styles.modalBackdrop}>
           <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 24 }]}>
-            <Text style={styles.modalTitle}>發送主身</Text>
-            <Text style={styles.modalSubtitle}>選擇好友，將最新新聞推播給該好友</Text>
+            <Text style={styles.modalTitle}>發送好友</Text>
+            <Text style={styles.modalSubtitle}>勾選好友，將最新新聞推播給他們</Text>
+
+            <TextInput
+              style={styles.pushSearchInput}
+              placeholder="搜尋好友..."
+              placeholderTextColor={colors.textTertiary}
+              value={pushSearch}
+              onChangeText={setPushSearch}
+            />
+
+            <FlatList
+              horizontal
+              data={PUSH_TAG_OPTIONS}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.pushTagBtn, pushTag === item && styles.pushTagBtnActive]}
+                  onPress={() => setPushTag(item)}
+                >
+                  <Text style={[styles.pushTagText, pushTag === item && styles.pushTagTextActive]}>
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.pushTagRow}
+            />
 
             {pushLoading ? (
               <View style={{ paddingVertical: 30, alignItems: 'center' }}>
@@ -372,37 +475,64 @@ export default function NewsScreen() {
               <FlatList
                 data={pushContacts}
                 keyExtractor={(item) => item.id.toString()}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.pushContactItem}
-                    activeOpacity={0.6}
-                    disabled={pushSending}
-                    onPress={() => sendPushToContact(item.id.toString())}
-                  >
-                    <View style={styles.pushContactAvatar}>
-                      {item.avatar ? (
-                        <Image source={{ uri: item.avatar }} style={styles.pushContactAvatar} />
-                      ) : null}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={styles.pushContactName}>{item.name}</Text>
-                        {item.isPrimary && (
-                          <FontAwesome6 name="crown" size={12} color={colors.accent} />
+                renderItem={({ item }) => {
+                  const selected = selectedIds.has(item.id.toString());
+                  return (
+                    <TouchableOpacity
+                      style={styles.pushContactItem}
+                      activeOpacity={0.6}
+                      disabled={pushSending}
+                      onPress={() => toggleSelect(item.id.toString())}
+                    >
+                      <View style={styles.pushContactAvatar}>
+                        {item.avatar ? (
+                          <Image source={{ uri: item.avatar }} style={styles.pushContactAvatar} />
+                        ) : null}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.pushContactName}>{item.name}</Text>
+                          {item.isPrimary && (
+                            <FontAwesome6 name="crown" size={12} color={colors.accent} />
+                          )}
+                        </View>
+                        <Text style={styles.pushContactMeta}>
+                          {item.company || item.title || 'LINE 好友'}
+                        </Text>
+                      </View>
+                      <View
+                        style={[styles.pushCheckbox, selected && styles.pushCheckboxActive]}
+                      >
+                        {selected && (
+                          <FontAwesome6 name="check" size={12} color={colors.textOnPrimary} />
                         )}
                       </View>
-                      <Text style={styles.pushContactMeta}>
-                        {item.company || item.title || 'LINE 好友'}
-                      </Text>
-                    </View>
-                    <FontAwesome6 name="paper-plane" size={14} color={colors.sky} />
-                  </TouchableOpacity>
-                )}
+                    </TouchableOpacity>
+                  );
+                }}
                 showsVerticalScrollIndicator={false}
               />
             )}
 
-            {pushMsg ? <Text style={styles.pushMsgText}>{pushMsg}</Text> : null}
+            <View style={styles.pushFooter}>
+              <Text style={styles.pushMsgText}>
+                {pushMsg || `已選 ${selectedIds.size} 位好友`}
+              </Text>
+              <TouchableOpacity
+                style={styles.pushSendBtn}
+                activeOpacity={0.7}
+                disabled={pushSending || selectedIds.size === 0}
+                onPress={sendPushToSelected}
+              >
+                {pushSending ? (
+                  <ActivityIndicator size="small" color={colors.textOnPrimary} />
+                ) : (
+                  <Text style={styles.pushSendBtnText}>
+                    發送{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>

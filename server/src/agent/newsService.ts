@@ -60,12 +60,13 @@ export async function fetchAllTopics(channelId: string, sub: NewsSubscription): 
   }
 }
 
-/** 推播最新新聞到指定好友（業務員手動挑選） */
-export async function pushNewsToUser(channelId: string, userId: string): Promise<void> {
+/** 推播最新新聞到指定好友（業務員手動挑選，可一次多個） */
+export async function pushNewsToUser(channelId: string, userIds: string[]): Promise<void> {
   try {
     const cc = await getClientByChannelKey(channelId);
     if (!cc) return;
-    if (!userId) {
+    const targets = (userIds ?? []).filter((id) => typeof id === 'string' && id.length > 0);
+    if (targets.length === 0) {
       logger.warn('news.push.no_user', { channelId });
       return;
     }
@@ -82,14 +83,16 @@ export async function pushNewsToUser(channelId: string, userId: string): Promise
     });
     const header = '📰 最新新聞追蹤\n\n';
     for (const chunk of chunkForLine(header + lines.join('\n\n'))) {
-      await cc.client.pushMessage({
-        to: userId,
-        messages: [{ type: 'text', text: chunk }],
-      });
+      for (const to of targets) {
+        await cc.client.pushMessage({
+          to,
+          messages: [{ type: 'text', text: chunk }],
+        });
+      }
     }
-    logger.info('news.push.done', { channelId, to: userId, count: items.length });
+    logger.info('news.push.done', { channelId, to: targets, count: items.length });
   } catch (e) {
-    logger.error('news.push.failed', { channelId, to: userId, error: String(e) });
+    logger.error('news.push.failed', { channelId, error: String(e) });
   }
 }
 
