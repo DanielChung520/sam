@@ -26,6 +26,7 @@ export interface NewsSubscription {
     tzOffset: number;              // UTC 偏移小時
   };
   enabled: boolean;
+  pushToOwner?: boolean;           // 每次抓取後將最新新聞推播到主身（channel destination）
   lastRunAt?: number;              // 上次抓取時間
   createdAt: number;
   updatedAt: number;
@@ -95,6 +96,7 @@ export async function upsertSubscription(
         tzOffset: 0,
       },
       enabled: true,
+      pushToOwner: false,
       createdAt: now,
     }),
     ...omitUndefined(fields),

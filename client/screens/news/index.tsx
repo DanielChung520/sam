@@ -6,6 +6,7 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Screen } from '@/components/Screen';
@@ -15,7 +16,7 @@ import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons';
-import { getNews, getNewsSubscription, triggerNewsFetch, type NewsItem } from '@/utils/api';
+import { getNews, getNewsSubscription, saveNewsSubscription, triggerNewsFetch, type NewsItem } from '@/utils/api';
 export default function NewsScreen() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,6 +24,7 @@ export default function NewsScreen() {
   const [activeTab, setActiveTab] = useState('全部');
   const [tabs, setTabs] = useState<string[]>(['全部']);
   const [showMenu, setShowMenu] = useState(false);
+  const [pushToOwner, setPushToOwner] = useState(false);
   const router = useSafeRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -143,8 +145,21 @@ export default function NewsScreen() {
       setTabs((prev) =>
         prev.length === next.length && prev.every((t, i) => t === next[i]) ? prev : next
       );
+      if (typeof data?.pushToOwner === 'boolean') setPushToOwner(data.pushToOwner);
     } catch (e) {
       console.error('Failed to load news tabs:', e);
+    }
+  }, []);
+
+  // 發送主身：每次抓取後將最新新聞推播到主身帳號
+  const togglePushToOwner = useCallback(async (value: boolean) => {
+    setPushToOwner(value);
+    setShowMenu(false);
+    try {
+      await saveNewsSubscription({ pushToOwner: value });
+    } catch (e) {
+      console.error('Failed to save pushToOwner:', e);
+      setPushToOwner(!value);
     }
   }, []);
 
@@ -237,6 +252,17 @@ export default function NewsScreen() {
             <FontAwesome6 name="clock" size={14} color={colors.accent} />
             <Text style={styles.menuItemText}>時間設置</Text>
           </TouchableOpacity>
+          <View style={styles.menuItem}>
+            <FontAwesome6 name="paper-plane" size={14} color={colors.sky} />
+            <Text style={styles.menuItemText}>發送主身</Text>
+            <Switch
+              value={pushToOwner}
+              onValueChange={togglePushToOwner}
+              trackColor={{ false: colors.bgInput, true: colors.sky }}
+              thumbColor={colors.surface}
+              style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+            />
+          </View>
         </View>
       )}
 

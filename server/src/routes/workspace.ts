@@ -97,6 +97,7 @@ router.patch('/news/subscription', async (req: any, res: any) => {
       analysisPrompt: typeof body.analysisPrompt === 'string' ? body.analysisPrompt : undefined,
       schedule: body.schedule ?? undefined,
       enabled: typeof body.enabled === 'boolean' ? body.enabled : undefined,
+      pushToOwner: typeof body.pushToOwner === 'boolean' ? body.pushToOwner : undefined,
     });
     res.json({ data: updated });
   } catch (e) {

@@ -7,7 +7,9 @@
 
 import { chatCompletion } from './llmClient.js';
 import { searchWeb, type SearchResultItem } from './skills/manifests/webSearch.js';
-import { upsertNewsItem, type NewsSubscription } from '../data/newsRepo.js';
+import { upsertNewsItem, listNewsItems, type NewsSubscription } from '../data/newsRepo.js';
+import { getClientByChannelKey } from '../lib/lineClient.js';
+import { chunkForLine } from './responseFormatter.js';
 import { logger } from './logger.js';
 
 const SUMMARY_LEN_HINT: Record<NewsSubscription['summaryLen'], string> = {
@@ -55,6 +57,43 @@ export async function fetchAllTopics(channelId: string, sub: NewsSubscription): 
     } catch (e) {
       logger.warn('news.topic_failed', { channelId, topic, error: String(e) });
     }
+  }
+  // 「發送主身」：抓取完成後將最新新聞推播到主身（channel destination）
+  if (sub.pushToOwner) {
+    await pushLatestNewsToOwner(channelId);
+  }
+}
+
+/** 推播最新新聞到主身帳號（channel destination） */
+async function pushLatestNewsToOwner(channelId: string): Promise<void> {
+  try {
+    const cc = await getClientByChannelKey(channelId);
+    if (!cc) return;
+    if (!cc.channel.destination) {
+      logger.warn('news.push_owner.no_destination', { channelId });
+      return;
+    }
+    if (cc.channel.pushEnabled === false) {
+      logger.warn('news.push_owner.disabled', { channelId });
+      return;
+    }
+    const items = await listNewsItems(channelId, 5);
+    if (items.length === 0) return;
+
+    const lines = items.map((n, i) => {
+      const url = n.url ? `\n${n.url}` : '';
+      return `${i + 1}. 【${n.topic || n.category}】${n.title}${url}\n${(n.summary ?? '').slice(0, 80)}`;
+    });
+    const header = '📰 最新新聞追蹤\n\n';
+    for (const chunk of chunkForLine(header + lines.join('\n\n'))) {
+      await cc.client.pushMessage({
+        to: cc.channel.destination,
+        messages: [{ type: 'text', text: chunk }],
+      });
+    }
+    logger.info('news.push_owner.done', { channelId, count: items.length });
+  } catch (e) {
+    logger.error('news.push_owner.failed', { channelId, error: String(e) });
   }
 }
 
